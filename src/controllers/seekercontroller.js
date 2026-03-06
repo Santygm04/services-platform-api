@@ -1,5 +1,5 @@
-const SeekerProfile = require('../models/seekerProfile');
-const ProviderProfile = require('../models/providerProfile');
+const SeekerProfile = require('../models/seekerprofile');
+const ProviderProfile = require('../models/providerprofile');
 
 // ── GET /api/seekers/me ──────────────────────────────────
 const getMyProfile = async (req, res) => {

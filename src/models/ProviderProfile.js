@@ -29,8 +29,13 @@ const providerProfileSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    category: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'ServiceCategory',
+      default: null,
+    },
     profilePhoto: {
-      type: String, // URL de la imagen
+      type: String,
       default: '',
     },
     plan: {
@@ -77,7 +82,7 @@ const providerProfileSchema = new mongoose.Schema(
     ],
     links: [
       {
-        label: { type: String }, // ej: "LinkedIn", "GitHub"
+        label: { type: String },
         url: { type: String },
       },
     ],
@@ -85,4 +90,4 @@ const providerProfileSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('ProviderProfile', providerProfileSchema);
+module.exports = mongoose.models.ProviderProfile || mongoose.model('ProviderProfile', providerProfileSchema);

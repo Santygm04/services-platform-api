@@ -1,4 +1,4 @@
-const ProviderProfile = require('../models/providerProfile');
+const ProviderProfile = require('../models/providerprofile');
 
 const DAILY_VIEW_LIMIT = 5;
 

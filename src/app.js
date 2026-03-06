@@ -14,6 +14,9 @@ app.get('/api/health', (req, res) => {
 
 // Rutas
 app.use('/api/auth', require('./routes/authroutes'));
+app.use('/api/providers', require('./routes/providerroutes'));
+app.use('/api/seekers', require('./routes/seekerroutes'));
+app.use('/api/search', require('./routes/searchroutes'));
 
 // Manejo de rutas no encontradas
 app.use((req, res) => {

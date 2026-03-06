@@ -30,4 +30,4 @@ const seekerProfileSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('SeekerProfile', seekerProfileSchema);
+module.exports = mongoose.models.SeekerProfile || mongoose.model('SeekerProfile', seekerProfileSchema);
