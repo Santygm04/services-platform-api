@@ -7,9 +7,9 @@ const {
   trackView,
   getMyStats,
   getAllProviders,
-} = require('../controllers/providerController');
-const { protect, requireEmailVerified } = require('../middlewares/authMiddleware');
-const { authorizeRoles } = require('../middlewares/roleMiddleware');
+} = require('../controllers/providercontroller');
+const { protect, requireEmailVerified } = require('../middlewares/authmiddleware');
+const { authorizeRoles } = require('../middlewares/rolemiddleware');
 
 // Públicas
 router.get('/', getAllProviders);

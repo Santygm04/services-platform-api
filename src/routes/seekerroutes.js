@@ -8,9 +8,9 @@ const {
   removeFavorite,
   getContactHistory,
   registerContact,
-} = require('../controllers/seekerController');
-const { protect, requireEmailVerified } = require('../middlewares/authMiddleware');
-const { authorizeRoles } = require('../middlewares/roleMiddleware');
+} = require('../controllers/seekercontroller');
+const { protect, requireEmailVerified } = require('../middlewares/authmiddleware');
+const { authorizeRoles } = require('../middlewares/rolemiddleware');
 
 // Todas protegidas — solo seekers
 router.use(protect, authorizeRoles('seeker'));
