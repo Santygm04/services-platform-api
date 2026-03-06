@@ -12,7 +12,18 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Zona Servicios API funcionando' });
 });
 
-// Rutas (se van agregando a medida que se crean)
-// app.use('/api/auth', require('./routes/authRoutes'));
+// Rutas
+app.use('/api/auth', require('./routes/authroutes'));
+
+// Manejo de rutas no encontradas
+app.use((req, res) => {
+  res.status(404).json({ message: 'Ruta no encontrada' });
+});
+
+// Manejo global de errores
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ message: 'Error interno del servidor' });
+});
 
 module.exports = app;
