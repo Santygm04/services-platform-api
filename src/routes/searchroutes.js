@@ -5,9 +5,10 @@ const {
   getFeatured,
   getUrgent,
 } = require('../controllers/searchcontroller');
+const { optionalAuth } = require('../middlewares/authmiddleware');
 
-// Todas públicas — no requieren autenticación
-router.get('/providers', searchProviders);
+// providers usa optionalAuth para detectar si hay usuario y aplicar límite Free
+router.get('/providers', optionalAuth, searchProviders);
 router.get('/featured', getFeatured);
 router.get('/urgent', getUrgent);
 

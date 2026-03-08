@@ -20,5 +20,6 @@ router.post('/:id/view', trackView);
 router.get('/me/profile', protect, authorizeRoles('provider'), getMyProfile);
 router.patch('/me/profile', protect, authorizeRoles('provider'), requireEmailVerified, updateMyProfile);
 router.get('/me/stats', protect, authorizeRoles('provider'), getMyStats);
-
+const { getProviderReviews } = require('../controllers/reviewcontroller');
+router.get('/:id/reviews', getProviderReviews);
 module.exports = router;

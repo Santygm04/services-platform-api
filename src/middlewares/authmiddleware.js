@@ -39,4 +39,19 @@ const requireEmailVerified = (req, res, next) => {
   next();
 };
 
-module.exports = { protect, requireEmailVerified };
+// Adjunta el usuario si hay token, pero no bloquea si no hay
+const optionalAuth = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return next();
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id).select('-password -emailVerificationToken');
+    if (user && user.status === 'active') req.user = user;
+    next();
+  } catch {
+    next();
+  }
+};
+
+module.exports = { protect, requireEmailVerified, optionalAuth };

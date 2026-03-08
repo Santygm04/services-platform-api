@@ -1,4 +1,5 @@
 const ProviderProfile = require('../models/providerprofile');
+const ServiceCategory = require('../models/servicecategory');
 
 // ── GET /api/search/providers ────────────────────────────
 const searchProviders = async (req, res) => {
@@ -16,7 +17,6 @@ const searchProviders = async (req, res) => {
 
     const filter = {};
 
-    // Filtro por palabra clave en profession o bio
     if (keyword) {
       filter.$or = [
         { profession: { $regex: keyword, $options: 'i' } },
@@ -24,34 +24,28 @@ const searchProviders = async (req, res) => {
       ];
     }
 
-    // Filtro por zona
     if (zone) {
       filter.zone = { $regex: zone, $options: 'i' };
     }
 
-    // Filtro por categoría/rubro
     if (category) {
       filter.category = category;
     }
 
-    // Filtro por rating mínimo
     if (minRating) {
       filter.ratingAverage = { $gte: parseFloat(minRating) };
     }
 
-    // Filtro por verificado
     if (verified === 'true') {
       filter.verified = true;
     }
 
-    // Filtro por urgencias
     if (urgent === 'true') {
       filter.urgencyAvailable = true;
     }
 
-    // Ordenamiento: Plus y verificados primero, luego por rating
     const sort = {
-      plan: -1,        // 'plus' > 'free' alfabéticamente inverso
+      plan: -1,
       verified: -1,
       ratingAverage: -1,
       reviewsCount: -1,
@@ -69,13 +63,24 @@ const searchProviders = async (req, res) => {
 
     const total = await ProviderProfile.countDocuments(filter);
 
+    // Límite Free: visitantes no autenticados ven solo 5 resultados
+    // El frontend usa "limited: true" para mostrar el popup de registro
+    const FREE_LIMIT = 5;
+    const isLimited = !req.user;
+
+    const visibleProviders = isLimited
+      ? providers.slice(0, FREE_LIMIT)
+      : providers;
+
     res.json({
-      providers,
+      providers: visibleProviders,
       pagination: {
         total,
         page: parseInt(page),
         pages: Math.ceil(total / parseInt(limit)),
       },
+      limited: isLimited,
+      freeLimit: isLimited ? FREE_LIMIT : null,
     });
   } catch (error) {
     console.error('searchProviders error:', error);
@@ -84,7 +89,6 @@ const searchProviders = async (req, res) => {
 };
 
 // ── GET /api/search/featured ─────────────────────────────
-// Prestadores Plus verificados con mejor rating
 const getFeatured = async (req, res) => {
   try {
     const providers = await ProviderProfile.find({
