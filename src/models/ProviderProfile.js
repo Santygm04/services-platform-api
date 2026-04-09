@@ -38,6 +38,17 @@ const providerProfileSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    // ── SEO: slug semántico ──
+    // Formato: "electricista-belgrano-juan-garcia-abc123"
+    // Se genera automáticamente al guardar si profession+zone+userId existen
+    slug: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      unique: true,
+      sparse: true, // permite nulls duplicados
+      default: undefined,
+    },
     plan: {
       type: String,
       enum: ['free', 'plus'],
@@ -51,7 +62,6 @@ const providerProfileSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    // Contador diario de visualizaciones para plan Free
     viewsTracking: {
       date: {
         type: Date,
@@ -72,7 +82,6 @@ const providerProfileSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-    // Solo Plus — se guardan pero solo se exponen si plan === 'plus'
     portfolio: [
       {
         imageUrl: { type: String },
@@ -89,5 +98,39 @@ const providerProfileSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// ── Helper: generar slug ──────────────────────────────────
+const slugify = (text) =>
+  text
+    .toString()
+    .normalize('NFD')                   // descomponer acentos
+    .replace(/[\u0300-\u036f]/g, '')    // remover diacríticos
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')      // solo alfanuméricos
+    .replace(/[\s_]+/g, '-')           // espacios → guiones
+    .replace(/-+/g, '-')              // múltiples guiones → uno
+    .replace(/^-|-$/g, '');           // trim guiones
+
+// ── Pre-save: auto-generar slug si no tiene ───────────────
+providerProfileSchema.pre('save', async function() {
+  if (!this.isModified('profession') && !this.isModified('zone') && this.slug) return;
+  
+  const base = [this.profession, this.zone]
+    .filter(Boolean)
+    .map(s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''))
+    .join('-');
+  
+  if (!base) {
+  this.slug = undefined;
+  return;
+}
+  
+  const suffix = this._id.toString().slice(-6);
+  this.slug = `${base}-${suffix}`;
+});
+
+// Índice para búsqueda por slug
+providerProfileSchema.index({ slug: 1 });
 
 module.exports = mongoose.models.ProviderProfile || mongoose.model('ProviderProfile', providerProfileSchema);

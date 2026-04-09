@@ -8,6 +8,16 @@ const seekerProfileSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
+    zone: {
+      type: String,
+      trim: true,
+      maxlength: 80,
+      default: '',
+    },
+    profilePhoto: {
+      type: String,
+      default: '',
+    },
     favorites: [
       {
         type: mongoose.Schema.Types.ObjectId,

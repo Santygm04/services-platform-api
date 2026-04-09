@@ -15,6 +15,17 @@ const serviceCategorySchema = new mongoose.Schema(
       unique: true,
       lowercase: true,
     },
+    icon: {
+      type: String,
+      default: '🔧',
+    },
+    // ── Subcategorías ──
+    subcategories: [
+      {
+        name: { type: String, required: true, trim: true },
+        slug: { type: String, required: true, trim: true, lowercase: true },
+      },
+    ],
     active: {
       type: Boolean,
       default: true,

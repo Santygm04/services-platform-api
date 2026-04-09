@@ -4,12 +4,18 @@ const {
   searchProviders,
   getFeatured,
   getUrgent,
+  getBySlug,
+  getCategories,
 } = require('../controllers/searchcontroller');
 const { optionalAuth } = require('../middlewares/authmiddleware');
 
-// providers usa optionalAuth para detectar si hay usuario y aplicar límite Free
-router.get('/providers', optionalAuth, searchProviders);
+// Rutas fijas ANTES de las parametrizadas
 router.get('/featured', getFeatured);
 router.get('/urgent', getUrgent);
+router.get('/categories', getCategories);
+router.get('/by-slug/:slug', getBySlug);
+
+// Búsqueda general — optionalAuth para detectar si es visitante o logueado
+router.get('/providers', optionalAuth, searchProviders);
 
 module.exports = router;

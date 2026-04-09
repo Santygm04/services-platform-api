@@ -1,6 +1,8 @@
 const Review = require('../models/review');
 const ProviderProfile = require('../models/providerprofile');
 const User = require('../models/user');
+const Notification = require('../models/notification');
+const { sendNewReviewEmail } = require('../services/emailservice');
 
 // ── POST /api/reviews ────────────────────────────────────
 const createReview = async (req, res) => {
@@ -44,6 +46,21 @@ const createReview = async (req, res) => {
 
     // Recalcular promedio del prestador
     await recalculateRating(providerId);
+
+    // Notificar al prestador por email
+    const providerUser = await User.findById(provider.userId);
+    if (providerUser) {
+      sendNewReviewEmail(providerUser.email, providerUser.name, alias || 'Un usuario', rating, comment || '').catch(err => console.error('sendNewReviewEmail error:', err));
+
+      // Notificación in-app al prestador
+      Notification.create({
+        userId: provider.userId,
+        type: 'new_review',
+        title: `Nueva reseña de ${alias || 'Un usuario'}`,
+        body: `Te dejaron una reseña de ${'★'.repeat(rating)}${'☆'.repeat(5 - rating)}${comment ? ': ' + comment.slice(0, 80) : ''}`,
+        meta: { reviewId: review._id, rating, providerId },
+      }).catch(err => console.error('Notification create error:', err));
+    }
 
     res.status(201).json({ message: 'Reseña creada', review });
   } catch (error) {
