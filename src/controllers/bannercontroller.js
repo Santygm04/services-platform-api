@@ -1,29 +1,40 @@
+const { MercadoPagoConfig, Preference, Payment } = require('mercadopago');
 const cloudinary = require('../config/cloudinary');
-const mercadopago = require('mercadopago');
-const BannerAd = require('../models/bannerad');
+const BannerAd   = require('../models/bannerad');
+
+// ── Cliente MP ────────────────────────────────────────────
+const mp = new MercadoPagoConfig({
+  accessToken: process.env.MP_ACCESS_TOKEN,
+});
 
 // ── Precios por posición (ARS/semana) ─────────────────────
-// Deben coincidir con bannerad.js BANNER_POSITIONS
 const SLOT_PRICES = {
-  sidebar_left:  2999,
-  sidebar_right: 2999,
-  home_sidebar:  3999,
-  mobile:        1999,
-  featured:      5999,
-  // retrocompatibilidad: 'sidebar' antiguo → trata como sidebar_left
-  sidebar:       2999,
+  // Sidebar lateral en resultados de búsqueda
+  sidebar_left:   18000,
+  sidebar_right:  18000,
+  sidebar:        18000,
+  // Banner principal en home (arriba del todo)
+  home_top:       35000,
+  // Notas destacadas home
+  home_featured:  28000,
+  featured:       28000,
+  // Sidebar home derecho
+  home_sidebar:   18000,
+  // Banner mobile (entre filtros y resultados)
+  mobile:         15000,
 };
 
 const POSITION_LABELS = {
-  sidebar_left:  'Sidebar Izquierdo (Búsqueda)',
-  sidebar_right: 'Sidebar Derecho (Búsqueda)',
-  home_sidebar:  'Sidebar Home',
-  mobile:        'Banner Mobile (Búsqueda)',
-  featured:      'Banner Destacado Home (Top)',
-  sidebar:       'Sidebar (Legacy)',
+  sidebar_left:   'Sidebar Lateral Izquierdo (Búsqueda)',
+  sidebar_right:  'Sidebar Lateral Derecho (Búsqueda)',
+  sidebar:        'Sidebar Lateral (Búsqueda)',
+  home_top:       'Banner Principal Home (Top)',
+  home_featured:  'Banner Notas Destacadas Home',
+  featured:       'Banner Destacado Home',
+  home_sidebar:   'Sidebar Home (Derecho)',
+  mobile:         'Banner Mobile (Búsqueda)',
 };
 
-// ── Helper: subir buffer a Cloudinary ────────────────────
 const uploadToCloudinary = (fileBuffer, folder, publicId) =>
   new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
@@ -34,50 +45,32 @@ const uploadToCloudinary = (fileBuffer, folder, publicId) =>
   });
 
 // ── GET /api/banners/active ───────────────────────────────
-// Público — devuelve banners activos por posición (o default si no hay)
 const getActiveBanners = async (req, res) => {
   try {
-    const now = new Date();
-
+    const now     = new Date();
     const banners = await BannerAd.find({
       status:   'active',
       startsAt: { $lte: now },
       endsAt:   { $gte: now },
       imageUrl: { $exists: true, $ne: null, $ne: '' },
-    })
-      .populate('userId', 'name')
-      .sort({ startsAt: -1 });
+    }).populate('userId', 'name').sort({ startsAt: -1 });
 
-    // Todas las posiciones válidas (incluyendo 'sidebar' legacy)
-    const positions = Object.keys(SLOT_PRICES);
     const result = {};
-
-    for (const pos of positions) {
-      // Banners de esta posición
-      // 'sidebar' legacy: matchea tanto 'sidebar' como 'sidebar_left'/'sidebar_right'
+    for (const pos of Object.keys(SLOT_PRICES)) {
       const positionBanners = pos === 'sidebar'
-        ? banners.filter(b => b.position === 'sidebar' || b.position === 'sidebar_left' || b.position === 'sidebar_right')
+        ? banners.filter(b => ['sidebar', 'sidebar_left', 'sidebar_right'].includes(b.position))
         : banners.filter(b => b.position === pos);
 
       if (positionBanners.length > 0) {
-        const paidBanners  = positionBanners.filter(b => b.amountPaid > 0);
-        const adminBanners = positionBanners.filter(b => b.amountPaid === 0);
-
-        // Pagados tienen prioridad; si no hay pagados, se usan los del admin
-        const rotatingBanners = paidBanners.length > 0 ? paidBanners : adminBanners;
-
+        const paid     = positionBanners.filter(b => b.amountPaid > 0);
+        const admin    = positionBanners.filter(b => b.amountPaid === 0);
+        const rotating = paid.length > 0 ? paid : admin;
         result[pos] = {
-          banners: rotatingBanners.map(b => ({
-            _id:      b._id,
-            imageUrl: b.imageUrl,
-            linkUrl:  b.linkUrl,
-            title:    b.title,
-          })),
+          banners:     rotating.map(b => ({ _id: b._id, imageUrl: b.imageUrl, linkUrl: b.linkUrl, title: b.title })),
           isDefault:   false,
-          totalActive: paidBanners.length,
+          totalActive: paid.length,
         };
       } else {
-        // Sin banner activo → null (el frontend usa su placeholder)
         result[pos] = null;
       }
     }
@@ -90,27 +83,20 @@ const getActiveBanners = async (req, res) => {
 };
 
 // ── GET /api/banners/prices ───────────────────────────────
-// Público — precios y disponibilidad por posición
 const getBannerPrices = async (req, res) => {
   try {
-    const now = new Date();
-
-    // Banners PAGOS activos (para calcular disponibilidad)
+    const now      = new Date();
     const occupied = await BannerAd.find({
       status:     'active',
       startsAt:   { $lte: now },
       endsAt:     { $gte: now },
       amountPaid: { $gt: 0 },
-    }).select('position endsAt amountPaid');
+    }).select('position endsAt');
 
     const availability = {};
-
     for (const [pos, price] of Object.entries(SLOT_PRICES)) {
-      if (pos === 'sidebar') continue; // no exponer posición legacy en precios
-
-      // Buscar si la posición está ocupada
+      if (pos === 'sidebar') continue;
       const slot = occupied.find(b => b.position === pos);
-
       availability[pos] = {
         label:         POSITION_LABELS[pos],
         pricePerWeek:  price,
@@ -119,7 +105,15 @@ const getBannerPrices = async (req, res) => {
       };
     }
 
-    res.json({ prices: SLOT_PRICES, availability });
+    const positions = {};
+  for (const [pos, price] of Object.entries(SLOT_PRICES)) {
+  if (pos === 'sidebar') continue;
+  positions[pos] = {
+    label:       POSITION_LABELS[pos],
+    pricePerWeek: price,
+  };
+}
+res.json({ prices: SLOT_PRICES, positions, availability });
   } catch (error) {
     console.error('getBannerPrices error:', error);
     res.status(500).json({ message: 'Error interno del servidor' });
@@ -127,20 +121,12 @@ const getBannerPrices = async (req, res) => {
 };
 
 // ── POST /api/banners/checkout ────────────────────────────
-// Prestador logueado — crea preferencia MP para comprar banner
 const createBannerCheckout = async (req, res) => {
   try {
     const { weeks = 1, position = 'sidebar_left', linkUrl = '', title = '' } = req.body;
 
-    if (!SLOT_PRICES[position]) {
-      return res.status(400).json({
-        message: `Posición de banner no válida. Opciones: ${Object.keys(SLOT_PRICES).filter(p => p !== 'sidebar').join(', ')}`,
-      });
-    }
-
-    if (weeks < 1 || weeks > 12) {
-      return res.status(400).json({ message: 'Número de semanas inválido (1-12)' });
-    }
+    if (!SLOT_PRICES[position]) return res.status(400).json({ message: 'Posición no válida' });
+    if (weeks < 1 || weeks > 52) return res.status(400).json({ message: 'Semanas inválidas (1-52)' });
 
     const pricePerWeek = SLOT_PRICES[position];
     const total        = pricePerWeek * weeks;
@@ -157,37 +143,37 @@ const createBannerCheckout = async (req, res) => {
       title,
       startsAt,
       endsAt,
-      amountPaid:   total,
-      status:       'pending_payment',
+      amountPaid: total,
+      status:     'pending_payment',
     });
 
-    const preference = await mercadopago.preferences.create({
-      items: [
-        {
+    const preference = new Preference(mp);
+    const response   = await preference.create({
+      body: {
+        items: [{
+          id:          `banner-${position}`,
           title:       `Banner ZonaServicios — ${POSITION_LABELS[position]} — ${weeks} sem.`,
           unit_price:  total,
           quantity:    1,
           currency_id: 'ARS',
+        }],
+        // ── FIX: back_urls apuntan al backend (ngrok) ──
+        back_urls: {
+          success: `${process.env.BACKEND_URL}/api/banners/redirect/success?bannerId=${banner._id}`,
+          failure: `${process.env.BACKEND_URL}/api/banners/redirect/failure`,
+          pending: `${process.env.BACKEND_URL}/api/banners/redirect/pending?bannerId=${banner._id}`,
         },
-      ],
-      back_urls: {
-        success: `${process.env.FRONTEND_URL}/banner/success?bannerId=${banner._id}`,
-        failure: `${process.env.FRONTEND_URL}/banner/failure`,
-        pending: `${process.env.FRONTEND_URL}/banner/pending?bannerId=${banner._id}`,
+        binary_mode:        true,
+        notification_url:   `${process.env.BACKEND_URL}/api/banners/webhook`,
+        external_reference: banner._id.toString(),
       },
-      auto_return:       'approved',
-      notification_url:  `${process.env.BACKEND_URL}/api/banners/webhook`,
-      external_reference: banner._id.toString(),
-      metadata:           { bannerId: banner._id.toString() },
     });
 
-    await BannerAd.findByIdAndUpdate(banner._id, {
-      mpPreferenceId: preference.body.id,
-    });
+    await BannerAd.findByIdAndUpdate(banner._id, { mpPreferenceId: response.id });
 
     res.json({
-      preferenceId: preference.body.id,
-      initPoint:    preference.body.init_point,
+      preferenceId: response.id,
+      initPoint:    response.init_point,
       bannerId:     banner._id,
       total,
       position,
@@ -195,49 +181,67 @@ const createBannerCheckout = async (req, res) => {
     });
   } catch (error) {
     console.error('createBannerCheckout error:', error);
-    res.status(500).json({ message: 'Error interno del servidor' });
+    res.status(500).json({ message: 'Error al crear preferencia de pago' });
   }
 };
 
 // ── POST /api/banners/webhook ─────────────────────────────
 const bannerWebhook = async (req, res) => {
+  // Siempre 200 primero
   res.sendStatus(200);
 
   try {
-    const { type, data } = req.body;
-    if (type !== 'payment' || !data?.id) return;
+    // ── FIX: MP puede mandar por body O por query params ──
+    const type   = req.body?.type     || req.query?.type;
+    const dataId = req.body?.data?.id || req.query?.['data.id'] || req.query?.id;
 
-    const payment = await mercadopago.payment.findById(data.id);
-    if (!payment?.body) return;
+    console.log('🔥 BANNER WEBHOOK body:', JSON.stringify(req.body));
+    console.log('🔥 BANNER WEBHOOK query:', JSON.stringify(req.query));
+    console.log(`[BANNER WEBHOOK] type=${type} id=${dataId}`);
 
-    const { status, external_reference, id: mpId } = payment.body;
+    if (type !== 'payment' || !dataId) return;
+
+    const paymentClient = new Payment(mp);
+    const payment       = await paymentClient.get({ id: dataId });
+
+    if (!payment) return;
+
+    const { status, external_reference, id: mpId } = payment;
+
+    console.log(`[BANNER WEBHOOK] status=${status} bannerId=${external_reference}`);
+
     if (status !== 'approved' || !external_reference) return;
 
     // Idempotencia
     const existing = await BannerAd.findOne({ mpPaymentId: String(mpId) });
-    if (existing) return;
+    if (existing) {
+      console.log(`[BANNER WEBHOOK] Pago ${mpId} ya procesado — ignorando`);
+      return;
+    }
 
     await BannerAd.findByIdAndUpdate(external_reference, {
       status:      'active',
       mpPaymentId: String(mpId),
     });
+
+    console.log(`✅ [BANNER WEBHOOK] Banner ${external_reference} activado`);
   } catch (err) {
     console.error('bannerWebhook error:', err);
   }
 };
 
 // ── POST /api/banners/:id/upload-image ────────────────────
-// Prestador sube imagen de SU banner (después de pagar)
 const uploadBannerImage = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No se recibió ningún archivo' });
-
     const banner = await BannerAd.findOne({ _id: req.params.id, userId: req.user._id });
-    if (!banner) return res.status(404).json({ message: 'Banner no encontrado' });
+    if (!banner)  return res.status(404).json({ message: 'Banner no encontrado' });
 
-    const publicId = `banner_${banner._id}_${Date.now()}`;
-    const result   = await uploadToCloudinary(req.file.buffer, 'zonaservicios/banners', publicId);
-
+    const result = await uploadToCloudinary(
+      req.file.buffer,
+      'zonaservicios/banners',
+      `banner_${banner._id}_${Date.now()}`
+    );
     banner.imageUrl = result.secure_url;
     await banner.save();
 
@@ -259,21 +263,19 @@ const getMyBanners = async (req, res) => {
   }
 };
 
-// ── ADMIN: GET /api/admin/banners ─────────────────────────
+// ── ADMIN: GET ────────────────────────────────────────────
 const adminListBanners = async (req, res) => {
   try {
     const { status = 'all', page = 1, limit = 20, position } = req.query;
     const filter = {};
-    if (status !== 'all')  filter.status   = status;
-    if (position)          filter.position  = position;
-
-    const skip = (page - 1) * limit;
+    if (status !== 'all') filter.status   = status;
+    if (position)         filter.position = position;
 
     const [banners, total] = await Promise.all([
       BannerAd.find(filter)
         .populate('userId', 'name email')
         .sort({ createdAt: -1 })
-        .skip(skip)
+        .skip((page - 1) * limit)
         .limit(Number(limit)),
       BannerAd.countDocuments(filter),
     ]);
@@ -285,28 +287,18 @@ const adminListBanners = async (req, res) => {
   }
 };
 
-// ── ADMIN: POST /api/admin/banners ────────────────────────
-// Admin crea banner sin pago (arranca como 'active' directo)
+// ── ADMIN: POST ───────────────────────────────────────────
 const adminCreateBanner = async (req, res) => {
   try {
-    const {
-      position   = 'sidebar_left',
-      linkUrl    = '',
-      title      = '',
-      weeks      = 4,
-      adminNotes = '',
-    } = req.body;
-
-    if (!SLOT_PRICES[position]) {
-      return res.status(400).json({ message: 'Posición no válida' });
-    }
+    const { position = 'sidebar_left', linkUrl = '', title = '', weeks = 4, adminNotes = '' } = req.body;
+    if (!SLOT_PRICES[position]) return res.status(400).json({ message: 'Posición no válida' });
 
     const startsAt = new Date();
     const endsAt   = new Date();
     endsAt.setDate(endsAt.getDate() + weeks * 7);
 
     const banner = await BannerAd.create({
-      userId:      req.user._id,   // el admin mismo como owner
+      userId: req.user._id,
       position,
       pricePerWeek: 0,
       weeks,
@@ -314,8 +306,8 @@ const adminCreateBanner = async (req, res) => {
       title,
       startsAt,
       endsAt,
-      amountPaid:  0,              // sin pago → admin banner
-      status:      'active',
+      amountPaid: 0,
+      status:     'active',
       adminNotes,
     });
 
@@ -326,7 +318,7 @@ const adminCreateBanner = async (req, res) => {
   }
 };
 
-// ── ADMIN: PATCH /api/admin/banners/:id ───────────────────
+// ── ADMIN: PATCH ──────────────────────────────────────────
 const adminUpdateBanner = async (req, res) => {
   try {
     const { status, linkUrl, title, adminNotes, imageUrl, position, weeks } = req.body;
@@ -337,23 +329,20 @@ const adminUpdateBanner = async (req, res) => {
     if (title      !== undefined) updates.title      = title;
     if (adminNotes !== undefined) updates.adminNotes = adminNotes;
     if (imageUrl   !== undefined) updates.imageUrl   = imageUrl;
-    if (position   !== undefined) {
-      if (!SLOT_PRICES[position]) {
-        return res.status(400).json({ message: 'Posición no válida' });
-      }
+
+    if (position !== undefined) {
+      if (!SLOT_PRICES[position]) return res.status(400).json({ message: 'Posición no válida' });
       updates.position    = position;
       updates.pricePerWeek = SLOT_PRICES[position];
     }
+
     if (weeks !== undefined) {
-      if (weeks < 1 || weeks > 52) {
-        return res.status(400).json({ message: 'Semanas inválidas (1-52)' });
-      }
-      const banner = await BannerAd.findById(req.params.id);
-      if (banner) {
-        const endsAt = new Date(banner.startsAt);
-        endsAt.setDate(endsAt.getDate() + weeks * 7);
+      const b = await BannerAd.findById(req.params.id);
+      if (b) {
+        const e = new Date(b.startsAt);
+        e.setDate(e.getDate() + weeks * 7);
         updates.weeks  = weeks;
-        updates.endsAt = endsAt;
+        updates.endsAt = e;
       }
     }
 
@@ -369,18 +358,18 @@ const adminUpdateBanner = async (req, res) => {
   }
 };
 
-// ── ADMIN: POST /api/admin/banners/:id/upload-image ───────
-// Imagen se guarda en Cloudinary (no en disco)
+// ── ADMIN: POST upload-image ──────────────────────────────
 const adminUploadBannerImage = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No se recibió ningún archivo' });
-
     const banner = await BannerAd.findById(req.params.id);
-    if (!banner) return res.status(404).json({ message: 'Banner no encontrado' });
+    if (!banner)  return res.status(404).json({ message: 'Banner no encontrado' });
 
-    const publicId = `banner_admin_${banner._id}_${Date.now()}`;
-    const result   = await uploadToCloudinary(req.file.buffer, 'zonaservicios/banners', publicId);
-
+    const result = await uploadToCloudinary(
+      req.file.buffer,
+      'zonaservicios/banners',
+      `banner_admin_${banner._id}_${Date.now()}`
+    );
     banner.imageUrl = result.secure_url;
     await banner.save();
 
@@ -391,7 +380,7 @@ const adminUploadBannerImage = async (req, res) => {
   }
 };
 
-// ── ADMIN: DELETE /api/admin/banners/:id ──────────────────
+// ── ADMIN: DELETE ─────────────────────────────────────────
 const adminDeleteBanner = async (req, res) => {
   try {
     const banner = await BannerAd.findByIdAndDelete(req.params.id);
@@ -403,7 +392,7 @@ const adminDeleteBanner = async (req, res) => {
   }
 };
 
-// ── Cron helper — expirar banners vencidos ────────────────
+// ── Cron helper ───────────────────────────────────────────
 const expireBanners = async () => {
   try {
     const result = await BannerAd.updateMany(

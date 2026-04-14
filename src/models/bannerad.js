@@ -8,13 +8,17 @@ const mongoose = require('mongoose');
 // mobile        → entre filtros y resultados en mobile
 // featured      → banner destacado en Home (hero/top)
 const BANNER_POSITIONS = {
-  sidebar_left:  { label: 'Sidebar Izquierdo (Búsqueda)',  pricePerWeek: 2999 },
-  sidebar_right: { label: 'Sidebar Derecho (Búsqueda)',    pricePerWeek: 2999 },
-  home_sidebar:  { label: 'Sidebar Home',                  pricePerWeek: 3999 },
-  mobile:        { label: 'Banner Mobile (Búsqueda)',      pricePerWeek: 1999 },
-  featured:      { label: 'Banner Destacado Home (Top)',   pricePerWeek: 5999 },
-};
+  sidebar_left:   { label: 'Sidebar Izquierdo (Búsqueda)', pricePerWeek: 18000 },
+  sidebar_right:  { label: 'Sidebar Derecho (Búsqueda)',   pricePerWeek: 18000 },
+  sidebar:        { label: 'Sidebar (legacy)',             pricePerWeek: 18000 },
 
+  home_top:       { label: 'Banner Principal Home',        pricePerWeek: 35000 },
+  home_featured:  { label: 'Destacados Home',              pricePerWeek: 28000 },
+  featured:       { label: 'Banner Destacado',             pricePerWeek: 28000 },
+
+  home_sidebar:   { label: 'Sidebar Home',                 pricePerWeek: 18000 },
+  mobile:         { label: 'Banner Mobile',                pricePerWeek: 15000 },
+};
 const bannerAdSchema = new mongoose.Schema(
   {
     // Quién compró el banner (prestador o admin con userId del sistema)
@@ -52,8 +56,16 @@ const bannerAdSchema = new mongoose.Schema(
     // featured                     → banner hero/top en Home
     position: {
       type: String,
-      enum: ['sidebar_left', 'sidebar_right', 'home_sidebar', 'mobile', 'featured',
-             'sidebar'],  // 'sidebar' mantenido por retrocompatibilidad
+      enum: [
+  'sidebar_left',
+  'sidebar_right',
+  'sidebar',
+  'home_top',
+  'home_featured',
+  'featured',
+  'home_sidebar',
+  'mobile'
+],  // 'sidebar' mantenido por retrocompatibilidad
       default: 'sidebar_left',
     },
 

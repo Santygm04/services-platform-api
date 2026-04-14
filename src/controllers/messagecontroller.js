@@ -49,13 +49,19 @@ const sendMessage = async (req, res) => {
     );
 
     // Notificación in-app al receptor
-    Notification.create({
-      userId: receiverId,
-      type: 'new_message',
-      title: `Nuevo mensaje de ${req.user.name || 'Un usuario'}`,
-      body: content.trim().slice(0, 100) + (content.trim().length > 100 ? '...' : ''),
-      meta: { senderId, conversationId, messageId: message._id },
-    }).catch(err => console.error('Notification create error:', err));
+    try {
+    await Notification.create({
+    userId: receiverId,
+    type: 'new_message',
+    title: `Nuevo mensaje de ${req.user.name || 'Un usuario'}`,
+    body:
+    content.trim().slice(0, 100) +
+    (content.trim().length > 100 ? '...' : ''),
+    meta: { senderId, conversationId, messageId: message._id },
+    });
+    } catch (err) {
+    console.error('Notification create error:', err);
+    }
 
     const populated = await Message.findById(message._id)
       .populate('sender', 'name role')

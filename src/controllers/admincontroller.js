@@ -5,10 +5,28 @@ const Review = require('../models/review');
 const BannerAd = require('../models/bannerad');
 const Verification = require('../models/verification');
 
+// ── Precios por posición (ARS/semana) — espejo de bannercontroller ──
+const SLOT_PRICES = {
+  sidebar_left:  2999,
+  sidebar_right: 2999,
+  home_sidebar:  3999,
+  mobile:        1999,
+  featured:      5999,
+  sidebar:       2999, // legacy
+};
+
+const POSITION_LABELS = {
+  sidebar_left:  'Sidebar Izquierdo (Búsqueda)',
+  sidebar_right: 'Sidebar Derecho (Búsqueda)',
+  home_sidebar:  'Sidebar Home',
+  mobile:        'Banner Mobile',
+  featured:      'Banner Destacado Home (Top)',
+  sidebar:       'Sidebar (Legacy)',
+};
+
 // ── GET /api/admin/metrics ───────────────────────────────
 const getMetrics = async (req, res) => {
   try {
-    // Filtro de período
     const periodMap = { '1m': 30, '3m': 90, '6m': 180, 'all': null };
     const periodDays = periodMap[req.query.period] ?? null;
     const periodFilter = periodDays ? { createdAt: { $gte: new Date(Date.now() - periodDays * 86400000) } } : {};
@@ -21,7 +39,7 @@ const getMetrics = async (req, res) => {
       User.countDocuments({ role: 'provider', ...periodFilter }),
       User.countDocuments({ role: 'seeker', ...periodFilter }),
       Review.countDocuments({ hidden: false, ...periodFilter }),
-      ProviderProfile.countDocuments({ plan: 'plus' }),
+      ProviderProfile.countDocuments({ plan: { $in: ['plus', 'premium'] } }),
       ProviderProfile.countDocuments({ verified: true }),
       User.countDocuments({ status: 'blocked' }),
       User.countDocuments({ status: 'inactive' }),
@@ -35,7 +53,6 @@ const getMetrics = async (req, res) => {
     });
     const weekTrend = newUsersWeek - newUsersPrevWeek;
 
-    // Registros por día (14 días)
     const regAgg = await User.aggregate([
       { $match: { createdAt: { $gte: fourteenDaysAgo } } },
       { $group: { _id: { date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, role: '$role' }, count: { $sum: 1 } } },
@@ -54,7 +71,6 @@ const getMetrics = async (req, res) => {
       dailyMap[_id.date].total += count;
     });
 
-    // Ratings
     const ratingAgg = await Review.aggregate([
       { $match: { hidden: false } },
       { $group: { _id: '$rating', count: { $sum: 1 } } },
@@ -64,20 +80,17 @@ const getMetrics = async (req, res) => {
       rating: `${r}★`, cantidad: ratingAgg.find(x => x._id === r)?.count || 0,
     }));
 
-    // Distribución roles
     const rolesData = [
-      { name: 'Buscadores',       value: totalSeekers,               color: '#8B5CF6' },
-      { name: 'Prestadores Free', value: totalProviders - plusProviders, color: '#2563C4' },
-      { name: 'Prestadores Plus', value: plusProviders,               color: '#D97706' },
+      { name: 'Buscadores',              value: totalSeekers,                  color: '#8B5CF6' },
+      { name: 'Prestadores Free',        value: totalProviders - plusProviders, color: '#2563C4' },
+      { name: 'Prestadores Plus/Premium',value: plusProviders,                  color: '#D97706' },
     ];
 
-    // Top 5 prestadores por rating
     const topProviders = await ProviderProfile.find({ reviewsCount: { $gt: 0 } })
       .sort({ ratingAverage: -1, reviewsCount: -1 })
       .limit(5)
       .populate('userId', 'name email status');
 
-    // Actividad reciente
     const [recentUsers, recentReviews] = await Promise.all([
       User.find().sort({ createdAt: -1 }).limit(8).select('name email role createdAt'),
       Review.find().sort({ createdAt: -1 }).limit(8)
@@ -96,7 +109,6 @@ const getMetrics = async (req, res) => {
       })),
     ].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 12);
 
-    // Banners activos
     const activeBanners = await BannerAd.countDocuments({ status: 'active' });
 
     res.json({
@@ -145,7 +157,6 @@ const getActivity = async (req, res) => {
 };
 
 // ── GET /api/admin/live ──────────────────────────────────
-// FIX: ahora importa Verification correctamente y cuenta pendientes reales
 const getLiveSnapshot = async (req, res) => {
   try {
     const oneDayAgo  = new Date(Date.now() - 86400000);
@@ -162,7 +173,6 @@ const getLiveSnapshot = async (req, res) => {
       User.countDocuments({ createdAt: { $gte: oneHourAgo } }),
       ProviderProfile.countDocuments({ userId: { $exists: true } }),
       Review.countDocuments({ createdAt: { $gte: oneDayAgo }, hidden: false }),
-      // FIX: ahora cuenta verificaciones pendientes reales
       Verification.countDocuments({ status: 'pending' }),
       BannerAd.countDocuments({ status: 'active' }),
       User.countDocuments({ status: 'blocked', updatedAt: { $gte: oneDayAgo } }),
@@ -190,16 +200,9 @@ const getLiveSnapshot = async (req, res) => {
     ].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 8);
 
     res.json({
-      totalActive,
-      newToday,
-      newThisHour,
-      activeProviders,
-      newReviewsToday,
-      pendingVerifications,
-      activeBanners,
-      blockedToday,
-      latestActivity,
-      timestamp: new Date(),
+      totalActive, newToday, newThisHour, activeProviders,
+      newReviewsToday, pendingVerifications, activeBanners, blockedToday,
+      latestActivity, timestamp: new Date(),
     });
   } catch (err) {
     console.error('getLiveSnapshot:', err);
@@ -212,7 +215,7 @@ const getFeaturedProviders = async (req, res) => {
   try {
     const providers = await ProviderProfile.find()
       .populate('userId', 'name email status')
-      .select('profession zone plan verified urgencyAvailable ratingAverage reviewsCount profilePhoto userId')
+      .select('profession zone plan verified urgencyAvailable ratingAverage reviewsCount profilePhoto userId activeStatus')
       .sort({ ratingAverage: -1, plan: -1 })
       .limit(30);
     res.json({ providers });
@@ -255,7 +258,7 @@ const getUsers = async (req, res) => {
       const obj = u.toObject();
       if (u.role === 'provider') {
         obj.profile = await ProviderProfile.findOne({ userId: u._id })
-          .select('profession zone plan verified profilePhoto ratingAverage reviewsCount urgencyAvailable _id');
+          .select('profession zone plan verified profilePhoto ratingAverage reviewsCount urgencyAvailable activeStatus _id');
       }
       return obj;
     }));
@@ -389,7 +392,6 @@ const deleteUser = async (req, res) => {
 
     if (user.role === 'provider') {
       await ProviderProfile.deleteOne({ userId: user._id });
-      // Limpiar verificación del prestador también
       await Verification.deleteOne({ userId: user._id });
     } else if (user.role === 'seeker') {
       await SeekerProfile.deleteOne({ userId: user._id });
@@ -426,7 +428,8 @@ const unverifyProvider = async (req, res) => {
 const upgradePlan = async (req, res) => {
   try {
     const { plan } = req.body;
-    if (!['free', 'plus'].includes(plan)) return res.status(400).json({ message: 'Plan inválido' });
+    if (!['free', 'plus', 'premium'].includes(plan))
+      return res.status(400).json({ message: 'Plan inválido. Opciones: free, plus, premium' });
     const profile = await ProviderProfile.findById(req.params.id);
     if (!profile) return res.status(404).json({ message: 'Perfil no encontrado' });
     profile.plan = plan; await profile.save();
@@ -540,20 +543,13 @@ const deleteAdminBanner = async (req, res) => {
   }
 };
 
-// ── DELETE /api/admin/providers/ghost/:id ────────────────────────────
-// Elimina un ProviderProfile huérfano directamente por su _id,
-// sin depender de que exista el User asociado.
+// ── DELETE /api/admin/providers/ghost/:id ────────────────
 const deleteGhostProvider = async (req, res) => {
   try {
     const { id } = req.params;
     const profile = await ProviderProfile.findByIdAndDelete(id);
-    if (!profile) {
-      return res.status(404).json({ message: 'Perfil no encontrado' });
-    }
-    // Limpiar Verification huérfana si existe
-    if (profile.userId) {
-      await Verification.deleteOne({ userId: profile.userId });
-    }
+    if (!profile) return res.status(404).json({ message: 'Perfil no encontrado' });
+    if (profile.userId) await Verification.deleteOne({ userId: profile.userId });
     res.json({ message: 'Prestador fantasma eliminado', id });
   } catch (err) {
     console.error('deleteGhostProvider error:', err);
@@ -562,27 +558,38 @@ const deleteGhostProvider = async (req, res) => {
 };
 
 // ── POST /api/admin/banners — crear banner desde admin (sin pago) ──
+// Ahora soporta todas las posiciones con precio por posición informativo.
 const createAdminBanner = async (req, res) => {
   try {
-    const { title, imageUrl, linkUrl, position, weeks, startsAt } = req.body;
+    const { title, imageUrl, linkUrl, position = 'sidebar_left', weeks, startsAt } = req.body;
+
     if (!imageUrl) return res.status(400).json({ message: 'La imagen es obligatoria' });
     if (!weeks || weeks < 1) return res.status(400).json({ message: 'Semanas inválidas' });
 
+    // Validar posición
+    const validPositions = Object.keys(SLOT_PRICES);
+    if (!validPositions.includes(position)) {
+      return res.status(400).json({
+        message: `Posición inválida. Opciones: ${validPositions.join(', ')}`,
+      });
+    }
+
     const start = startsAt ? new Date(startsAt) : new Date();
-    const end = new Date(start.getTime() + weeks * 7 * 86400000);
+    const end   = new Date(start.getTime() + weeks * 7 * 86400000);
 
     const banner = await BannerAd.create({
-      userId: req.user._id,
-      title: title || 'Banner admin',
+      userId:     req.user._id,
+      title:      title || 'Banner admin',
       imageUrl,
-      linkUrl: linkUrl || '',
-      position: position || 'sidebar',
+      linkUrl:    linkUrl || '',
+      position,
+      pricePerWeek: SLOT_PRICES[position], // registramos el precio de referencia
       weeks,
-      startsAt: start,
-      endsAt: end,
-      status: 'active',
+      startsAt:   start,
+      endsAt:     end,
+      status:     'active',
       amountPaid: 0,
-      adminNotes: 'Creado desde panel admin sin pago',
+      adminNotes: `Creado desde panel admin sin pago — ${POSITION_LABELS[position] || position}`,
     });
 
     res.status(201).json({ message: 'Banner creado', banner });
@@ -593,7 +600,7 @@ const createAdminBanner = async (req, res) => {
 };
 
 module.exports = {
-   getMetrics, getActivity, getLiveSnapshot,
+  getMetrics, getActivity, getLiveSnapshot,
   getFeaturedProviders, toggleUrgency,
   getUsers, getUserDetail, exportUsers,
   bulkAction, blockUser, unblockUser, deactivateUser, reactivateUser, deleteUser,

@@ -36,6 +36,17 @@ const seekerProfileSchema = new mongoose.Schema(
         },
       },
     ],
+
+    // ── Búsquedas recientes ───────────────────────────────
+    // Se guarda la última keyword/zona buscada con timestamp.
+    // Máximo 10 entradas; las más viejas se descartan automáticamente.
+    recentSearches: [
+      {
+        keyword:   { type: String, trim: true, default: '' },
+        zone:      { type: String, trim: true, default: '' },
+        searchedAt:{ type: Date, default: Date.now },
+      },
+    ],
   },
   { timestamps: true }
 );

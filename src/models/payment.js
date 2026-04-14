@@ -12,42 +12,36 @@ const paymentSchema = new mongoose.Schema(
       ref: 'Subscription',
       default: null,
     },
-
-    // Datos de MercadoPago
-    mpPaymentId:      { type: String, required: true, unique: true }, // id del pago en MP
-    mpPreferenceId:   { type: String, default: null },                // preference_id
-    mpMerchantOrderId:{ type: String, default: null },
-
+    mpPaymentId:       { type: String, required: true, unique: true },
+    mpPreferenceId:    { type: String, default: null },
+    mpMerchantOrderId: { type: String, default: null },
     type: {
       type: String,
       enum: ['subscription', 'manual'],
       default: 'subscription',
     },
-
     status: {
       type: String,
-      // approved / pending / rejected / cancelled / refunded / charged_back
       enum: ['approved', 'pending', 'rejected', 'cancelled', 'refunded', 'charged_back'],
       required: true,
     },
-
     amount:   { type: Number, required: true },
     currency: { type: String, default: 'ARS' },
 
-    // Plan que se activó con este pago
-    planActivated: { type: String, enum: ['plus', 'free'], default: 'plus' },
+    // ── FIX: agregado 'premium', removido enum estricto para no romper con null ──
+    planActivated: {
+      type: String,
+      enum: ['plus', 'premium', 'free', null],
+      default: null,
+    },
 
-    // Período que cubre este pago
     periodStart: { type: Date, default: null },
     periodEnd:   { type: Date, default: null },
-
-    // Raw del webhook (para debugging y auditoría)
-    rawWebhook: { type: mongoose.Schema.Types.Mixed, default: null },
+    rawWebhook:  { type: mongoose.Schema.Types.Mixed, default: null },
   },
   { timestamps: true }
 );
 
-// Índices útiles para consultas del panel admin
 paymentSchema.index({ userId: 1, createdAt: -1 });
 paymentSchema.index({ mpPaymentId: 1 });
 paymentSchema.index({ status: 1 });

@@ -11,20 +11,11 @@ const getOrCreate = async (userId) => {
   return doc;
 };
 
-// Subir buffer de multer a Cloudinary
 const uploadBufferToCloudinary = (fileBuffer, folder, publicId) => {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
-      {
-        folder,
-        public_id: publicId,
-        resource_type: 'image',
-        overwrite: true,
-      },
-      (error, result) => {
-        if (error) reject(error);
-        else resolve(result);
-      }
+      { folder, public_id: publicId, resource_type: 'image', overwrite: true },
+      (error, result) => { if (error) reject(error); else resolve(result); }
     );
     stream.end(fileBuffer);
   });
@@ -32,18 +23,11 @@ const uploadBufferToCloudinary = (fileBuffer, folder, publicId) => {
 
 const fileUrlToBase64 = async (url) => {
   const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`No se pudo descargar la imagen: ${url}`);
-  }
-
+  if (!response.ok) throw new Error(`No se pudo descargar la imagen: ${url}`);
   const arrayBuffer = await response.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
   const contentType = response.headers.get('content-type') || 'image/jpeg';
-
-  return {
-    base64: buffer.toString('base64'),
-    mediaType: contentType,
-  };
+  return { base64: buffer.toString('base64'), mediaType: contentType };
 };
 
 // ── Verificación con IA (Claude API) ─────────────────────
@@ -65,25 +49,24 @@ const analyzeWithAI = async (verification) => {
     for (const field of imageFields) {
       const fileUrl = verification[field];
       if (!fileUrl) {
-        return {
-          autoApprove: false,
-          reason: `Falta la imagen ${field}.`,
-        };
+        return { autoApprove: false, reason: `Falta la imagen ${field}.` };
       }
-
       const imageData = await fileUrlToBase64(fileUrl);
       images.push(imageData);
     }
 
+    // ── FIX: modelo correcto ──────────────────────────────
+    // claude-sonnet-4-20250514 no existe.
+    // Usar claude-sonnet-4-5 (alias estable de Sonnet 4.5) o claude-opus-4-5
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
+        'Content-Type':     'application/json',
+        'x-api-key':        apiKey,
+        'anthropic-version':'2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model:      'claude-sonnet-4-5',   // ← modelo correcto
         max_tokens: 1000,
         messages: [
           {
@@ -91,27 +74,15 @@ const analyzeWithAI = async (verification) => {
             content: [
               {
                 type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: images[0].mediaType,
-                  data: images[0].base64,
-                },
+                source: { type: 'base64', media_type: images[0].mediaType, data: images[0].base64 },
               },
               {
                 type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: images[1].mediaType,
-                  data: images[1].base64,
-                },
+                source: { type: 'base64', media_type: images[1].mediaType, data: images[1].base64 },
               },
               {
                 type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: images[2].mediaType,
-                  data: images[2].base64,
-                },
+                source: { type: 'base64', media_type: images[2].mediaType, data: images[2].base64 },
               },
               {
                 type: 'text',
@@ -199,25 +170,13 @@ Respondé SOLO el JSON, nada más.`,
 const uploadDniFront = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No se recibió ningún archivo' });
-
     const verification = await getOrCreate(req.user._id);
-
     const publicId = `dni_front_${req.user._id}_${Date.now()}`;
     const result = await uploadBufferToCloudinary(req.file.buffer, 'zonaservicios/verification/dni-front', publicId);
-
     verification.dniFront = result.secure_url;
-
-    if (verification.status === 'rejected') {
-      verification.status = 'incomplete';
-      verification.rejectionReason = '';
-    }
-
+    if (verification.status === 'rejected') { verification.status = 'incomplete'; verification.rejectionReason = ''; }
     await verification.save();
-
-    res.json({
-      message: 'DNI frente subido',
-      dniFront: verification.dniFront,
-    });
+    res.json({ message: 'DNI frente subido', dniFront: verification.dniFront });
   } catch (error) {
     console.error('uploadDniFront error:', error);
     res.status(500).json({ message: 'Error interno del servidor' });
@@ -228,25 +187,13 @@ const uploadDniFront = async (req, res) => {
 const uploadDniBack = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No se recibió ningún archivo' });
-
     const verification = await getOrCreate(req.user._id);
-
     const publicId = `dni_back_${req.user._id}_${Date.now()}`;
     const result = await uploadBufferToCloudinary(req.file.buffer, 'zonaservicios/verification/dni-back', publicId);
-
     verification.dniBack = result.secure_url;
-
-    if (verification.status === 'rejected') {
-      verification.status = 'incomplete';
-      verification.rejectionReason = '';
-    }
-
+    if (verification.status === 'rejected') { verification.status = 'incomplete'; verification.rejectionReason = ''; }
     await verification.save();
-
-    res.json({
-      message: 'DNI dorso subido',
-      dniBack: verification.dniBack,
-    });
+    res.json({ message: 'DNI dorso subido', dniBack: verification.dniBack });
   } catch (error) {
     console.error('uploadDniBack error:', error);
     res.status(500).json({ message: 'Error interno del servidor' });
@@ -257,25 +204,13 @@ const uploadDniBack = async (req, res) => {
 const uploadSelfie = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No se recibió ningún archivo' });
-
     const verification = await getOrCreate(req.user._id);
-
     const publicId = `selfie_${req.user._id}_${Date.now()}`;
     const result = await uploadBufferToCloudinary(req.file.buffer, 'zonaservicios/verification/selfie', publicId);
-
     verification.selfie = result.secure_url;
-
-    if (verification.status === 'rejected') {
-      verification.status = 'incomplete';
-      verification.rejectionReason = '';
-    }
-
+    if (verification.status === 'rejected') { verification.status = 'incomplete'; verification.rejectionReason = ''; }
     await verification.save();
-
-    res.json({
-      message: 'Selfie subida',
-      selfie: verification.selfie,
-    });
+    res.json({ message: 'Selfie subida', selfie: verification.selfie });
   } catch (error) {
     console.error('uploadSelfie error:', error);
     res.status(500).json({ message: 'Error interno del servidor' });
@@ -290,37 +225,27 @@ const submitVerification = async (req, res) => {
     if (!verification.dniFront || !verification.dniBack || !verification.selfie) {
       return res.status(400).json({
         message: 'Debés subir DNI frente, DNI dorso y selfie antes de enviar',
-        missing: {
-          dniFront: !verification.dniFront,
-          dniBack: !verification.dniBack,
-          selfie: !verification.selfie,
-        },
+        missing: { dniFront: !verification.dniFront, dniBack: !verification.dniBack, selfie: !verification.selfie },
       });
     }
 
-    if (verification.status === 'pending') {
-      return res.status(400).json({ message: 'Tu solicitud ya está en revisión' });
-    }
-
-    if (verification.status === 'approved') {
-      return res.status(400).json({ message: 'Tu identidad ya fue verificada' });
-    }
+    if (verification.status === 'pending')  return res.status(400).json({ message: 'Tu solicitud ya está en revisión' });
+    if (verification.status === 'approved') return res.status(400).json({ message: 'Tu identidad ya fue verificada' });
 
     const aiAnalysis = await analyzeWithAI(verification);
 
-    verification.submittedAt = new Date();
-    verification.attempts += 1;
-    verification.reviewedAt = null;
-    verification.reviewedBy = null;
+    verification.submittedAt    = new Date();
+    verification.attempts      += 1;
+    verification.reviewedAt     = null;
+    verification.reviewedBy     = null;
     verification.rejectionReason = '';
-    verification.aiAnalysis = aiAnalysis.aiResult || null;
+    verification.aiAnalysis     = aiAnalysis.aiResult || null;
 
     if (aiAnalysis.autoApprove) {
-      verification.status = 'approved';
-      verification.reviewedAt = new Date();
-      verification.reviewedBy = null;
+      verification.status       = 'approved';
+      verification.reviewedAt   = new Date();
+      verification.reviewedBy   = null;
       verification.aiAutoApproved = true;
-
       await verification.save();
 
       const updatedUser = await User.findByIdAndUpdate(
@@ -328,7 +253,6 @@ const submitVerification = async (req, res) => {
         { $set: { verified: true } },
         { new: true, strict: false }
       );
-
       await ProviderProfile.findOneAndUpdate(
         { userId: req.user._id },
         { $set: { verified: true } },
@@ -336,9 +260,8 @@ const submitVerification = async (req, res) => {
       );
 
       if (updatedUser?.email) {
-        sendVerifiedProviderEmail(updatedUser.email, updatedUser.name).catch((err) =>
-          console.error('Error enviando email verificado:', err)
-        );
+        sendVerifiedProviderEmail(updatedUser.email, updatedUser.name)
+          .catch(err => console.error('Error enviando email verificado:', err));
       }
 
       return res.json({
@@ -349,15 +272,13 @@ const submitVerification = async (req, res) => {
       });
     }
 
-    verification.status = 'pending';
+    verification.status         = 'pending';
     verification.aiAutoApproved = false;
-    verification.aiReason = aiAnalysis.reason;
-
+    verification.aiReason       = aiAnalysis.reason;
     await verification.save();
 
     return res.json({
-      message:
-        'Solicitud enviada. La verificación automática no pudo confirmar tu identidad, así que un admin la revisará en 24-48 horas.',
+      message: 'Solicitud enviada. La verificación automática no pudo confirmar tu identidad, así que un admin la revisará en 24-48 horas.',
       status: 'pending',
       autoApproved: false,
       aiReason: aiAnalysis.reason,
@@ -383,8 +304,7 @@ const getMyVerification = async (req, res) => {
 const listVerifications = async (req, res) => {
   try {
     const { status = 'pending', page = 1, limit = 20 } = req.query;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-
+    const skip   = (parseInt(page) - 1) * parseInt(limit);
     const filter = status === 'all' ? {} : { status };
     filter.userId = { $exists: true, $ne: null };
 
@@ -394,24 +314,12 @@ const listVerifications = async (req, res) => {
       .skip(skip)
       .limit(Number(limit));
 
-    const verifications = allVerifs.filter((v) => v.userId && v.userId.name);
+    const verifications = allVerifs.filter(v => v.userId && v.userId.name);
 
     const totalAgg = await Verification.aggregate([
       { $match: filter },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'userId',
-          foreignField: '_id',
-          as: 'user',
-        },
-      },
-      {
-        $match: {
-          'user.0': { $exists: true },
-          'user.0.name': { $exists: true, $ne: null },
-        },
-      },
+      { $lookup: { from: 'users', localField: 'userId', foreignField: '_id', as: 'user' } },
+      { $match: { 'user.0': { $exists: true }, 'user.0.name': { $exists: true, $ne: null } } },
       { $count: 'total' },
     ]);
 
@@ -422,11 +330,7 @@ const listVerifications = async (req, res) => {
       total,
       page: Number(page),
       pages: Math.ceil(total / Number(limit)),
-      pagination: {
-        total,
-        page: Number(page),
-        pages: Math.ceil(total / Number(limit)),
-      },
+      pagination: { total, page: Number(page), pages: Math.ceil(total / Number(limit)) },
     });
   } catch (error) {
     console.error('listVerifications error:', error);
@@ -434,39 +338,26 @@ const listVerifications = async (req, res) => {
   }
 };
 
-// ── ADMIN: PATCH /api/verification/admin/:userId/approve ──
+// ── ADMIN: PATCH approve ──────────────────────────────────
 const approveVerification = async (req, res) => {
   try {
     const { userId } = req.params;
     const verification = await Verification.findOne({ userId });
-
     if (!verification) return res.status(404).json({ message: 'Solicitud no encontrada' });
-    if (verification.status !== 'pending') {
-      return res.status(400).json({ message: 'La solicitud no está en estado pendiente' });
-    }
+    if (verification.status !== 'pending') return res.status(400).json({ message: 'La solicitud no está en estado pendiente' });
 
-    verification.status = 'approved';
-    verification.reviewedAt = new Date();
-    verification.reviewedBy = req.user._id;
+    verification.status          = 'approved';
+    verification.reviewedAt      = new Date();
+    verification.reviewedBy      = req.user._id;
     verification.rejectionReason = '';
     await verification.save();
 
-    const updatedUser = await User.findByIdAndUpdate(
-      userId,
-      { $set: { verified: true } },
-      { new: true, strict: false }
-    );
-
-    await ProviderProfile.findOneAndUpdate(
-      { userId },
-      { $set: { verified: true } },
-      { upsert: false }
-    );
+    const updatedUser = await User.findByIdAndUpdate(userId, { $set: { verified: true } }, { new: true, strict: false });
+    await ProviderProfile.findOneAndUpdate({ userId }, { $set: { verified: true } }, { upsert: false });
 
     if (updatedUser?.email) {
-      sendVerifiedProviderEmail(updatedUser.email, updatedUser.name).catch((err) =>
-        console.error('Error enviando email verificado:', err)
-      );
+      sendVerifiedProviderEmail(updatedUser.email, updatedUser.name)
+        .catch(err => console.error('Error enviando email verificado:', err));
     }
 
     res.json({ message: 'Verificación aprobada', verification });
@@ -476,21 +367,18 @@ const approveVerification = async (req, res) => {
   }
 };
 
-// ── ADMIN: PATCH /api/verification/admin/:userId/reject ───
+// ── ADMIN: PATCH reject ───────────────────────────────────
 const rejectVerification = async (req, res) => {
   try {
     const { userId } = req.params;
     const { reason = '' } = req.body;
     const verification = await Verification.findOne({ userId });
-
     if (!verification) return res.status(404).json({ message: 'Solicitud no encontrada' });
-    if (verification.status !== 'pending') {
-      return res.status(400).json({ message: 'La solicitud no está en estado pendiente' });
-    }
+    if (verification.status !== 'pending') return res.status(400).json({ message: 'La solicitud no está en estado pendiente' });
 
-    verification.status = 'rejected';
-    verification.reviewedAt = new Date();
-    verification.reviewedBy = req.user._id;
+    verification.status          = 'rejected';
+    verification.reviewedAt      = new Date();
+    verification.reviewedBy      = req.user._id;
     verification.rejectionReason = reason;
     await verification.save();
 
@@ -511,9 +399,7 @@ const getVerificationDetail = async (req, res) => {
     const verification = await Verification.findOne({ userId })
       .populate('userId', 'name email createdAt')
       .populate('reviewedBy', 'name');
-
     if (!verification) return res.status(404).json({ message: 'Solicitud no encontrada' });
-
     res.json({ verification });
   } catch (error) {
     console.error('getVerificationDetail error:', error);
@@ -527,7 +413,6 @@ const deleteVerification = async (req, res) => {
     const { id } = req.params;
     const verif = await Verification.findByIdAndDelete(id);
     if (!verif) return res.status(404).json({ message: 'Verificación no encontrada' });
-
     res.json({ message: 'Verificación eliminada', id });
   } catch (error) {
     console.error('deleteVerification error:', error);

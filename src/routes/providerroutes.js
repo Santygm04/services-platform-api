@@ -9,6 +9,7 @@ const {
   getAllProviders,
   getNearbyActivity,
   getNearbySeekersForMe,
+  toggleActiveStatus,
 } = require('../controllers/providercontroller');
 const { protect, requireEmailVerified, optionalAuth } = require('../middlewares/authmiddleware');
 const { authorizeRoles } = require('../middlewares/rolemiddleware');
@@ -22,6 +23,9 @@ router.get('/me/profile',         protect, authorizeRoles('provider'), getMyProf
 router.patch('/me/profile',       protect, authorizeRoles('provider'), requireEmailVerified, updateMyProfile);
 router.get('/me/stats',           protect, authorizeRoles('provider'), getMyStats);
 router.get('/me/nearby-seekers',  protect, authorizeRoles('provider'), getNearbySeekersForMe);
+
+// ── Toggle activo/inactivo ────────────────────────────────
+router.patch('/me/active-status', protect, authorizeRoles('provider'), toggleActiveStatus);
 
 // ── Rutas con :id — van DESPUÉS de /me ──
 router.get('/:id',                optionalAuth, getPublicProfile);

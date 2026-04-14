@@ -159,6 +159,86 @@ const registerContact = async (req, res) => {
   }
 };
 
+const MAX_RECENT_SEARCHES = 10;
+ 
+// ── GET /api/seekers/me/recent-searches ──────────────────
+// Devuelve las últimas búsquedas del seeker (máx 10, ordenadas por más reciente).
+const getRecentSearches = async (req, res) => {
+  try {
+    const profile = await SeekerProfile.findOne({ userId: req.user._id })
+      .select('recentSearches');
+    if (!profile) return res.status(404).json({ message: 'Perfil no encontrado' });
+ 
+    const sorted = (profile.recentSearches || [])
+      .sort((a, b) => new Date(b.searchedAt) - new Date(a.searchedAt))
+      .slice(0, MAX_RECENT_SEARCHES);
+ 
+    res.json({ recentSearches: sorted });
+  } catch (err) {
+    console.error('getRecentSearches error:', err);
+    res.status(500).json({ message: 'Error interno del servidor' });
+  }
+};
+
+const addRecentSearch = async (req, res) => {
+  try {
+    const { keyword = '', zone = '' } = req.body;
+ 
+    if (!keyword.trim() && !zone.trim()) {
+      return res.status(400).json({ message: 'Debés enviar al menos keyword o zone' });
+    }
+ 
+    const profile = await SeekerProfile.findOne({ userId: req.user._id });
+    if (!profile) return res.status(404).json({ message: 'Perfil no encontrado' });
+ 
+    const kw = keyword.trim().toLowerCase();
+    const zn = zone.trim().toLowerCase();
+ 
+    // Eliminar duplicados de la misma combinación
+    profile.recentSearches = (profile.recentSearches || []).filter(s =>
+      !(s.keyword.toLowerCase() === kw && s.zone.toLowerCase() === zn)
+    );
+ 
+    // Insertar al principio
+    profile.recentSearches.unshift({
+      keyword:    keyword.trim(),
+      zone:       zone.trim(),
+      searchedAt: new Date(),
+    });
+ 
+    // Recortar a máximo permitido
+    if (profile.recentSearches.length > MAX_RECENT_SEARCHES) {
+      profile.recentSearches = profile.recentSearches.slice(0, MAX_RECENT_SEARCHES);
+    }
+ 
+    await profile.save();
+ 
+    res.json({ message: 'Búsqueda guardada', recentSearches: profile.recentSearches });
+  } catch (err) {
+    console.error('addRecentSearch error:', err);
+    res.status(500).json({ message: 'Error interno del servidor' });
+  }
+};
+ 
+// ── DELETE /api/seekers/me/recent-searches ───────────────
+// Borra todo el historial de búsquedas recientes.
+const clearRecentSearches = async (req, res) => {
+  try {
+    const profile = await SeekerProfile.findOneAndUpdate(
+      { userId: req.user._id },
+      { $set: { recentSearches: [] } },
+      { new: true }
+    );
+    if (!profile) return res.status(404).json({ message: 'Perfil no encontrado' });
+ 
+    res.json({ message: 'Historial de búsquedas eliminado', recentSearches: [] });
+  } catch (err) {
+    console.error('clearRecentSearches error:', err);
+    res.status(500).json({ message: 'Error interno del servidor' });
+  }
+};
+ 
+
 module.exports = {
   getMyProfile,
   updateMyProfile,
@@ -167,4 +247,7 @@ module.exports = {
   removeFavorite,
   getContactHistory,
   registerContact,
+  getRecentSearches, 
+  addRecentSearch, 
+  clearRecentSearches
 };

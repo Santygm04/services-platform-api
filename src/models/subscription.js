@@ -6,56 +6,44 @@ const subscriptionSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
-      unique: true, // un usuario → una suscripción activa
+      unique: true,
     },
+    // ── FIX: agregado 'premium' al enum ──
     plan: {
       type: String,
-      enum: ['free', 'plus'],
+      enum: ['free', 'plus', 'premium'],
       default: 'free',
     },
     status: {
       type: String,
-      // active    → suscripción vigente
-      // pending   → pago iniciado, esperando confirmación
-      // cancelled → cancelada por el usuario
-      // expired   → venció sin renovar
-      // paused    → retenida por MercadoPago (ej: fallo de cobro)
       enum: ['active', 'pending', 'cancelled', 'expired', 'paused'],
       default: 'active',
     },
-
-    // IDs de MercadoPago
-    mpSubscriptionId: { type: String, default: null }, // ID suscripción recurrente MP
-    mpPayerId:        { type: String, default: null }, // payer_id de MP
-
-    // Fechas
-    startDate:   { type: Date, default: null },
-    endDate:     { type: Date, default: null }, // cuándo vence el período actual
-    cancelledAt: { type: Date, default: null },
-
-    // Tipo de suscripción
+    mpSubscriptionId: { type: String, default: null },
+    mpPayerId:        { type: String, default: null },
+    startDate:        { type: Date,   default: null },
+    endDate:          { type: Date,   default: null },
+    cancelledAt:      { type: Date,   default: null },
     type: {
       type: String,
-      enum: ['recurring', 'manual'], // recurrente automático vs. pago manual mensual
+      enum: ['recurring', 'manual'],
       default: 'recurring',
     },
-
-    // Historial de renovaciones (se pushea en cada webhook authorized)
     renewals: [
       {
-        date:      { type: Date },
+        date:      { type: Date   },
         amount:    { type: Number },
-        paymentId: { type: String }, // mp payment_id
-        status:    { type: String }, // approved / rejected
+        paymentId: { type: String },
+        status:    { type: String },
       },
     ],
   },
   { timestamps: true }
 );
 
-// Helper: ¿está activa y vigente?
 subscriptionSchema.methods.isActive = function () {
   return this.status === 'active' && (!this.endDate || this.endDate > new Date());
 };
 
-module.exports = mongoose.models.Subscription || mongoose.model('Subscription', subscriptionSchema);
+module.exports =
+  mongoose.models.Subscription || mongoose.model('Subscription', subscriptionSchema);

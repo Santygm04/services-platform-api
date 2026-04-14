@@ -1,7 +1,7 @@
 const express = require('express');
 const multer  = require('multer');
-const { protect }         = require('../middlewares/authmiddleware');
-const { authorizeRoles }  = require('../middlewares/rolemiddleware');
+const { protect }        = require('../middlewares/authmiddleware');
+const { authorizeRoles } = require('../middlewares/rolemiddleware');
 const {
   getActiveBanners,
   getBannerPrices,
@@ -19,10 +19,9 @@ const {
 const router = express.Router();
 
 // ── Multer (memoria → Cloudinary) ────────────────────────
-// NO se guarda en disco. El buffer se sube a Cloudinary en el controller.
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits:  { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  limits:  { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = ['image/jpeg', 'image/png', 'image/webp'];
     allowed.includes(file.mimetype)
@@ -36,54 +35,37 @@ router.get('/active',   getActiveBanners);
 router.get('/prices',   getBannerPrices);
 router.post('/webhook', bannerWebhook);
 
+// ── Redirects de MP → reenvían al frontend ────────────────
+router.get('/redirect/success', (req, res) => {
+  const { bannerId = '' } = req.query;
+  const url = `${process.env.FRONTEND_URL}/banner/success?bannerId=${bannerId}`;
+  console.log(`[MP Banner Redirect] SUCCESS → ${url}`);
+  res.redirect(url);
+});
+
+router.get('/redirect/failure', (req, res) => {
+  const url = `${process.env.FRONTEND_URL}/banner/failure`;
+  console.log(`[MP Banner Redirect] FAILURE → ${url}`);
+  res.redirect(url);
+});
+
+router.get('/redirect/pending', (req, res) => {
+  const { bannerId = '' } = req.query;
+  const url = `${process.env.FRONTEND_URL}/banner/pending?bannerId=${bannerId}`;
+  console.log(`[MP Banner Redirect] PENDING → ${url}`);
+  res.redirect(url);
+});
+
 // ── Rutas prestador ───────────────────────────────────────
-router.get('/my',
-  protect, authorizeRoles('provider'),
-  getMyBanners
-);
-
-router.post('/checkout',
-  protect, authorizeRoles('provider'),
-  createBannerCheckout
-);
-
-router.post('/:id/upload-image',
-  protect, authorizeRoles('provider'),
-  upload.single('image'),
-  uploadBannerImage
-);
+router.get('/my',      protect, authorizeRoles('provider'), getMyBanners);
+router.post('/checkout', protect, authorizeRoles('provider'), createBannerCheckout);
+router.post('/:id/upload-image', protect, authorizeRoles('provider'), upload.single('image'), uploadBannerImage);
 
 // ── Rutas admin ───────────────────────────────────────────
-// GET    /api/admin/banners             → listar (con filtros ?status=&position=)
-// POST   /api/admin/banners             → crear sin pago
-// PATCH  /api/admin/banners/:id         → actualizar
-// POST   /api/admin/banners/:id/upload-image → subir imagen
-// DELETE /api/admin/banners/:id         → eliminar
-
-router.get('/admin',
-  protect, authorizeRoles('admin'),
-  adminListBanners
-);
-
-router.post('/admin',
-  protect, authorizeRoles('admin'),
-  adminCreateBanner
-);
-
-router.patch('/admin/:id',
-  protect, authorizeRoles('admin'),
-  adminUpdateBanner
-);
-
-router.post('/admin/:id/upload-image',
-  protect, authorizeRoles('admin'),
-  upload.single('image'),
-  adminUploadBannerImage
-);
-
-router.delete('/admin/:id',
-  protect, authorizeRoles('admin'),
-  adminDeleteBanner
-);
+router.get('/admin',                  protect, authorizeRoles('admin'), adminListBanners);
+router.post('/admin',                 protect, authorizeRoles('admin'), adminCreateBanner);
+router.patch('/admin/:id',            protect, authorizeRoles('admin'), adminUpdateBanner);
+router.post('/admin/:id/upload-image',protect, authorizeRoles('admin'), upload.single('image'), adminUploadBannerImage);
+router.delete('/admin/:id',           protect, authorizeRoles('admin'), adminDeleteBanner);
 
 module.exports = router;

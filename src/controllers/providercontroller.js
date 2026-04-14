@@ -178,6 +178,32 @@ const getAllProviders = async (req, res) => {
   }
 };
 
+// ── PATCH /api/providers/me/active-status ─────────────────
+// Permite al prestador marcar su perfil como activo o inactivo.
+// El campo `activeStatus` en ProviderProfile debe existir (boolean, default true).
+const toggleActiveStatus = async (req, res) => {
+  try {
+    const profile = await ProviderProfile.findOne({ userId: req.user._id });
+    if (!profile) return res.status(404).json({ message: 'Perfil no encontrado' });
+
+    // Si viene `active` en el body lo usa; si no, hace toggle
+    const next = req.body.active !== undefined
+      ? Boolean(req.body.active)
+      : !profile.activeStatus;
+
+    profile.activeStatus = next;
+    await profile.save();
+
+    res.json({
+      message:      `Perfil marcado como ${next ? 'activo' : 'inactivo'}`,
+      activeStatus: profile.activeStatus,
+    });
+  } catch (error) {
+    console.error('toggleActiveStatus error:', error);
+    res.status(500).json({ message: 'Error interno del servidor' });
+  }
+};
+
 // ── helpers ────────────────────────────────────────────────
 const registerView = async (profile) => {
   if (profile.plan === 'plus') {
@@ -216,6 +242,7 @@ const buildPublicProfile = (profile, isAuthenticated) => {
     plan:             profile.plan,
     verified:         profile.verified,
     urgencyAvailable: profile.urgencyAvailable,
+    activeStatus:     profile.activeStatus,
     ratingAverage:    profile.ratingAverage,
     reviewsCount:     profile.reviewsCount,
   };
@@ -224,7 +251,7 @@ const buildPublicProfile = (profile, isAuthenticated) => {
     base.phone = profile.phone;
   }
 
-  if (profile.plan === 'plus') {
+  if (profile.plan === 'plus' || profile.plan === 'premium') {
     base.portfolio = profile.portfolio;
     base.links     = profile.links;
   }
@@ -245,10 +272,10 @@ const getNearbyActivity = async (req, res) => {
     const regexSource = zoneWords.length ? zoneWords.join('|') : providerZone;
     const zoneRegex = new RegExp(regexSource, 'i');
 
-   const allSeekers = await SeekerProfile.find({ zone: { $regex: zoneRegex } })
-  .populate('userId', 'name emailVerified createdAt status')
-  .select('zone favorites userId profilePhoto')
-  .limit(50);
+    const allSeekers = await SeekerProfile.find({ zone: { $regex: zoneRegex } })
+      .populate('userId', 'name emailVerified createdAt status')
+      .select('zone favorites userId profilePhoto')
+      .limit(50);
 
     const filtered = allSeekers.filter(s =>
       s.userId &&
@@ -271,15 +298,15 @@ const getNearbyActivity = async (req, res) => {
       }
 
       return {
-  _id:             s._id,
-  userId:          s.userId._id,
-  name:            s.userId.name,
-  zone:            s.zone,
-  profilePhoto:    s.profilePhoto || '',
-  memberSince:     s.userId.createdAt,
-  relevanceScore:  score,
-  relevanceLabels: label,
-};
+        _id:             s._id,
+        userId:          s.userId._id,
+        name:            s.userId.name,
+        zone:            s.zone,
+        profilePhoto:    s.profilePhoto || '',
+        memberSince:     s.userId.createdAt,
+        relevanceScore:  score,
+        relevanceLabels: label,
+      };
     });
 
     scored.sort((a, b) =>
@@ -307,10 +334,11 @@ const getNearbySeekersForMe = async (req, res) => {
     const regexSource2 = zoneWords.length ? zoneWords.join('|') : providerZone;
     const zoneRegex    = new RegExp(regexSource2, 'i');
 
-   const allSeekers = await SeekerProfile.find({ zone: { $regex: zoneRegex } })
-  .populate('userId', 'name emailVerified createdAt status')
-  .select('zone favorites userId profilePhoto')
-  .limit(60);
+    const allSeekers = await SeekerProfile.find({ zone: { $regex: zoneRegex } })
+      .populate('userId', 'name emailVerified createdAt status')
+      .select('zone favorites userId profilePhoto')
+      .limit(60);
+
     const filtered = allSeekers.filter(s =>
       s.userId &&
       s.userId.status !== 'blocked'  &&
@@ -333,16 +361,16 @@ const getNearbySeekersForMe = async (req, res) => {
       }
 
       return {
-  _id:             s._id,
-  userId:          s.userId._id,
-  name:            s.userId.name,
-  zone:            s.zone,
-  profilePhoto:    s.profilePhoto || '',
-  memberSince:     s.userId.createdAt,
-  relevanceScore:  score,
-  relevanceLabels: labels,
-  hasFavorited:    labels.includes('te tiene en favoritos'),
-};
+        _id:             s._id,
+        userId:          s.userId._id,
+        name:            s.userId.name,
+        zone:            s.zone,
+        profilePhoto:    s.profilePhoto || '',
+        memberSince:     s.userId.createdAt,
+        relevanceScore:  score,
+        relevanceLabels: labels,
+        hasFavorited:    labels.includes('te tiene en favoritos'),
+      };
     });
 
     scored.sort((a, b) =>
@@ -366,4 +394,5 @@ module.exports = {
   getAllProviders,
   getNearbyActivity,
   getNearbySeekersForMe,
+  toggleActiveStatus,
 };

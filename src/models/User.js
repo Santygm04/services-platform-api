@@ -50,20 +50,35 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+
+    // ── Google OAuth ──────────────────────────────────────
+    // ID único que devuelve Google al autenticar.
+    // null para usuarios registrados con email/password.
+    googleId: {
+      type: String,
+      default: null,
+      sparse: true, // permite múltiples nulls en el índice unique
+    },
   },
   { timestamps: true }
 );
 
-// Encriptar password antes de guardar — compatible con Mongoose 9
+// ── Pre-save: encriptar password ──────────────────────────
+// Solo hashea si el password fue modificado.
+// Los usuarios de Google tienen password aleatorio — también se hashea
+// pero nunca se usa para login (siempre entran por OAuth).
 userSchema.pre('save', async function () {
   if (!this.isModified('password')) return;
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
 });
 
-// Método para comparar password en login
+// ── Método: comparar password en login ───────────────────
 userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
+
+// ── Índice sparse en googleId ─────────────────────────────
+userSchema.index({ googleId: 1 }, { sparse: true });
 
 module.exports = mongoose.model('User', userSchema);
