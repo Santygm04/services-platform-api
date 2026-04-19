@@ -28,6 +28,13 @@ const {
   deleteGhostProvider,
 } = require('../controllers/admincontroller');
 
+const {
+  adminListBanners,
+  adminCreateBanner,
+  adminUpdateBanner,
+  adminDeleteBanner,
+} = require('../controllers/bannercontroller');
+
 router.use(protect);
 router.use(authorizeRoles('admin'));
 
@@ -130,5 +137,10 @@ router.post('/upload', uploadMemory.single('image'), async (req, res) => {
     res.status(500).json({ message: 'Error al subir imagen' });
   }
 });
+
+router.get('/banners',        adminListBanners);
+router.post('/banners',       adminCreateBanner);
+router.patch('/banners/:id',  adminUpdateBanner);
+router.delete('/banners/:id', adminDeleteBanner);
 
 module.exports = router;
