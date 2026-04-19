@@ -12,15 +12,16 @@ const searchProviders = async (req, res) => {
       minRating,
       verified,
       urgent,
+      active,
       page = 1,
       limit = 20,
       
     } = req.query;
 
-    const filter = {
+    
+  const filter = {
   profession: { $exists: true, $nin: [null, '', undefined] },
-  activeStatus: { $ne: false },
-};
+  };
 
     if (keyword) {
       filter.$or = [
@@ -74,6 +75,12 @@ const searchProviders = async (req, res) => {
       filter.urgencyAvailable = true;
     }
 
+     if (active === 'true') {
+      filter.activeStatus = true;
+    } else {
+      filter.activeStatus = { $ne: false };
+    }
+
     // Traer todos para ordenar por plan correctamente antes de paginar
     const allProviders = await ProviderProfile.find(filter)
       .populate('userId', 'name')
@@ -87,23 +94,24 @@ const searchProviders = async (req, res) => {
 
     const premiums = allProviders.filter(p => p.plan === 'premium');
     const plus     = allProviders.filter(p => p.plan === 'plus');
-    const free     = allProviders.filter(p => p.plan !== 'premium' && p.plan !== 'plus');
-
+    const free = allProviders.filter(p => p.plan !== 'premium' && p.plan !== 'plus');
+    const activeProviders   = [...premiums.filter(p => p.activeStatus !== false), ...plus.filter(p => p.activeStatus !== false), ...free.filter(p => p.activeStatus !== false)];
+    const inactiveProviders = allProviders.filter(p => p.activeStatus === false);
     const rotate = (arr, slot) => {
       if (arr.length <= 1) return arr;
       const offset = slot % arr.length;
       return [...arr.slice(offset), ...arr.slice(0, offset)];
     };
 
-    const sorted = [
-      ...rotate(premiums, rotationSlot),
-      ...rotate(plus, rotationSlot),
-      ...free.sort((a, b) =>
-        (b.verified - a.verified) ||
-        (b.ratingAverage - a.ratingAverage) ||
-        (b.reviewsCount - a.reviewsCount)
-      ),
-    ];
+    const sortedActive = [
+  ...rotate(premiums.filter(p => p.activeStatus !== false), rotationSlot),
+  ...rotate(plus.filter(p => p.activeStatus !== false), rotationSlot),
+  ...free.filter(p => p.activeStatus !== false).sort((a, b) =>
+    (b.verified - a.verified) || (b.ratingAverage - a.ratingAverage) || (b.reviewsCount - a.reviewsCount)
+  ),
+  ];
+  const sortedInactive = allProviders.filter(p => p.activeStatus === false);
+  const sorted = [...sortedActive, ...sortedInactive];
 
     const pageNum   = parseInt(page);
     const limitNum  = parseInt(limit);
