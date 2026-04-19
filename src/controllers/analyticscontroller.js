@@ -1,4 +1,4 @@
-const analyticsService = require('../services/analyticsService');
+const analyticsService = require('../services/analyticsservice');
 
 // Helper para extraer rango de fechas de query params
 const getDates = (query) => ({
