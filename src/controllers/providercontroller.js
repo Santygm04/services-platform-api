@@ -1,7 +1,7 @@
-const ProviderProfile = require('../models/providerprofile');
+const ProviderProfile = require('../models/ProviderProfile');
 const Review          = require('../models/review');
-const SeekerProfile   = require('../models/seekerprofile');
-const User            = require('../models/user');
+const SeekerProfile   = require('../models/SeekerProfile');
+const User            = require('../models/User');
 const ProfileEvent    = require('../models/profileevent');
 
 const DAILY_VIEW_LIMIT = 5;

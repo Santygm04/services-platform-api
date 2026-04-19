@@ -1,6 +1,6 @@
 const Review = require('../models/review');
-const ProviderProfile = require('../models/providerprofile');
-const User = require('../models/user');
+const ProviderProfile = require('../models/ProviderProfile');
+const User = require('../models/User');
 const Notification = require('../models/notification');
 const { sendNewReviewEmail } = require('../services/emailservice');
 

@@ -1,7 +1,7 @@
 const cloudinary = require('../config/cloudinary');
 const Verification = require('../models/verification');
-const ProviderProfile = require('../models/providerprofile');
-const User = require('../models/user');
+const ProviderProfile = require('../models/ProviderProfile');
+const User = require('../models/User');
 const { sendVerifiedProviderEmail } = require('../services/emailservice');
 
 // ── Helpers ──────────────────────────────────────────────
