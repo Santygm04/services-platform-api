@@ -1,6 +1,6 @@
 const Message = require('../models/message');
 const { ConversationMeta } = require('../models/message');
-const User = require('../models/user');
+const User = require('../models/User');
 const Notification = require('../models/notification');
 
 // ── Helper: obtener o crear meta de conversación ──────────────

@@ -1,4 +1,4 @@
-const ProviderProfile = require('../models/providerprofile');
+const ProviderProfile = require('../models/ProviderProfile');
 const ServiceCategory = require('../models/servicecategory');
 
 // ── GET /api/search/providers ────────────────────────────

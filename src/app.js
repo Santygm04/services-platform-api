@@ -58,7 +58,7 @@ app.use('/api/admin/analytics', analyticsRoutes);
 // ── Sitemap SEO ──────────────────────────────────────────
 app.get('/sitemap.xml', async (req, res) => {
   try {
-    const ProviderProfile = require('./models/providerprofile');
+    const ProviderProfile = require('./models/ProviderProfile');
     const profiles = await ProviderProfile.find({ slug: { $exists: true, $ne: null } })
       .select('slug updatedAt')
       .lean();

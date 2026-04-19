@@ -4,7 +4,7 @@ const { protect } = require('../middlewares/authmiddleware');
 const { authorizeRoles } = require('../middlewares/rolemiddleware');
 const multer = require('multer');
 const cloudinary = require('../config/cloudinary');
-const ProviderProfile = require('../models/Providerprofile');
+const ProviderProfile = require('../models/ProviderProfile');
 
 const uploadMemory = multer({
   storage: multer.memoryStorage(),

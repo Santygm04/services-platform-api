@@ -66,8 +66,8 @@ const getActiveBanners = async (req, res) => {
         // La rotación real se hace en el frontend con el ROTATE_INTERVAL
 
         // Primero buscamos el plan de cada usuario de los banners
-        const User = require('../models/user');
-        const ProviderProfile = require('../models/providerprofile');
+        const User = require('../models/User');
+        const ProviderProfile = require('../models/ProviderProfile');
 
         const withPlan = await Promise.all(pool.map(async (b) => {
   try {

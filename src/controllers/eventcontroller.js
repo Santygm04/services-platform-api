@@ -1,5 +1,5 @@
 const ProfileEvent    = require('../models/profileevent');
-const ProviderProfile = require('../models/providerprofile');
+const ProviderProfile = require('../models/ProviderProfile');
 
 // ── POST /api/events/track ─────────────────────────────────
 // Body: { providerId, eventType, meta? }

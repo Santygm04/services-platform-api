@@ -1,8 +1,8 @@
 const { MercadoPagoConfig, Preference, Payment, PreApproval } = require('mercadopago');
 const Subscription    = require('../models/subscription');
 const PaymentModel    = require('../models/payment');
-const ProviderProfile = require('../models/providerprofile');
-const User            = require('../models/user');
+const ProviderProfile = require('../models/ProviderProfile');
+const User            = require('../models/User');
 const { sendPlanUpgradeEmail } = require('../services/emailservice');
 
 
