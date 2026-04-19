@@ -1,4 +1,4 @@
-const User            = require('../models/user');
+const User            = require('../models/User');
 const ProviderProfile = require('../models/providerprofile');
 const SeekerProfile   = require('../models/seekerprofile');
 const Notification    = require('../models/notification');
