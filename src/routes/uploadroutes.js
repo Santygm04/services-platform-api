@@ -3,8 +3,8 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const cloudinary = require('../config/cloudinary');
-const ProviderProfile = require('../models/providerprofile');
-const SeekerProfile = require('../models/seekerprofile');
+const ProviderProfile = require('../models/ProviderProfile');
+const SeekerProfile = require('../models/SeekerProfile');
 const { protect } = require('../middlewares/authmiddleware');
 const { authorizeRoles } = require('../middlewares/rolemiddleware');
 

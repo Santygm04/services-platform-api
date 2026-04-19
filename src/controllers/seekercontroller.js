@@ -1,6 +1,6 @@
-const SeekerProfile = require('../models/seekerprofile');
-const ProviderProfile = require('../models/providerprofile');
-const User = require('../models/user');
+const SeekerProfile = require('../models/SeekerProfile');
+const ProviderProfile = require('../models/ProviderProfile');
+const User = require('../models/User');
 
 // ── Helper: obtener o crear perfil automáticamente ────────
 // Evita el error 404 para usuarios registrados antes de que existiera el modelo
