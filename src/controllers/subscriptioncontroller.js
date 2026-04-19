@@ -5,6 +5,8 @@ const ProviderProfile = require('../models/providerprofile');
 const User            = require('../models/user');
 const { sendPlanUpgradeEmail } = require('../services/emailservice');
 
+
+
 // ── Configuración de planes ───────────────────────────────
 const PLAN_CONFIG = {
   plus: {
@@ -42,6 +44,7 @@ const createPreference = async (req, res) => {
     console.log('BACKEND_URL:', process.env.BACKEND_URL);
     console.log('WEBHOOK URL:', `${process.env.BACKEND_URL}/api/subscriptions/webhook`);
 
+    
     const preference = new Preference(mp);
     const response   = await preference.create({
       body: {
@@ -104,28 +107,47 @@ const createRecurring = async (req, res) => {
     const cfg = PLAN_CONFIG[plan];
 
     const preApproval = new PreApproval(mp);
-    const response    = await preApproval.create({
+
+    const startDate = new Date(Date.now() + 10000); // 10 segundos en el futuro
+    const endDate   = new Date();
+    endDate.setFullYear(endDate.getFullYear() + 5);
+
+    const response = await preApproval.create({
       body: {
-        reason:     cfg.title,
+        reason:             cfg.title,
         auto_recurring: {
           frequency:          1,
           frequency_type:     'months',
           transaction_amount: cfg.price,
           currency_id:        'ARS',
+          start_date:         startDate.toISOString(),
+          end_date:           endDate.toISOString(),
         },
         payer_email:        user.email,
         back_url:           `${process.env.BACKEND_URL}/api/subscriptions/redirect/success?plan=${plan}`,
         external_reference: `${user._id}|${plan}`,
         notification_url:   `${process.env.BACKEND_URL}/api/subscriptions/webhook`,
-        status:             'pending',
       },
     });
 
+    console.log('createRecurring MP response:', JSON.stringify(response));
+
+    // En sandbox MP devuelve sandbox_init_point, en producción init_point
+    const initPoint = response?.init_point || response?.sandbox_init_point;
+
+    if (!initPoint) {
+      console.error('createRecurring — MP no devolvió init_point:', response);
+      return res.status(500).json({
+        message: 'MercadoPago no devolvió URL de pago. Verificá las credenciales y que BACKEND_URL sea una URL pública (no localhost).',
+        mpResponse: response,
+      });
+    }
+
     res.json({
       subscriptionId: response.id,
-      initPoint:      response.init_point,
+      initPoint,
       plan,
-      price:          cfg.price,
+      price: cfg.price,
     });
   } catch (err) {
     console.error('createRecurring error:', err);
@@ -273,6 +295,12 @@ const webhook = async (req, res) => {
         console.log(`[WEBHOOK MP] Plan desactivado para userId=${userId}`);
       }
     }
+  // ── Cobro recurrente ejecutado ───────────────────────────
+    if (type === 'subscription_authorized_payment' || type === 'subscription_preapproval_plan') {
+      console.log(`[WEBHOOK MP] Evento de cobro recurrente: ${type} id=${dataId}`);
+      // MP notifica pagos recurrentes como type='payment' también — ya manejado arriba
+    }
+
   } catch (err) {
     console.error('[WEBHOOK MP] Error:', err.message, err.stack);
   }

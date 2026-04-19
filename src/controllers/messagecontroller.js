@@ -42,32 +42,41 @@ const sendMessage = async (req, res) => {
       content: content.trim(),
     });
 
-    // Si alguno tenía la conversación archivada o eliminada, restaurarla
-    await ConversationMeta.updateMany(
-      { conversationId, $or: [{ archived: true }, { deleted: true }] },
-      { $set: { archived: false, deleted: false } }
-    );
-
-    // Notificación in-app al receptor
-    try {
-    await Notification.create({
-    userId: receiverId,
-    type: 'new_message',
-    title: `Nuevo mensaje de ${req.user.name || 'Un usuario'}`,
-    body:
-    content.trim().slice(0, 100) +
-    (content.trim().length > 100 ? '...' : ''),
-    meta: { senderId, conversationId, messageId: message._id },
-    });
-    } catch (err) {
-    console.error('Notification create error:', err);
-    }
-
     const populated = await Message.findById(message._id)
       .populate('sender', 'name role')
       .populate('receiver', 'name role');
 
+    // 🚀 RESPUESTA INMEDIATA (esto hace que no tarde)
     res.status(201).json({ message: populated });
+
+    // 🔥 TODO ESTO AHORA ES ASYNC (no bloquea)
+    setImmediate(async () => {
+      try {
+        await ConversationMeta.updateMany(
+          { conversationId, $or: [{ archived: true }, { deleted: true }] },
+          { $set: { archived: false, deleted: false } }
+        );
+
+        await Notification.create({
+          userId: receiverId,
+          type: 'new_message',
+          title: `Nuevo mensaje de ${req.user.name || 'Un usuario'}`,
+          body:
+            content.trim().slice(0, 100) +
+            (content.trim().length > 100 ? '...' : ''),
+          meta: { senderId, conversationId, messageId: message._id },
+        });
+
+        const io = req.app.get('io');
+        if (io) {
+          io.to(receiverId.toString()).emit('newMessage', populated);
+          console.log('📤 BACK: enviando mensaje a:', receiverId.toString());
+        }
+      } catch (err) {
+        console.error('Post-send async error:', err);
+      }
+    });
+
   } catch (err) {
     console.error('sendMessage error:', err);
     res.status(500).json({ message: 'Error al enviar mensaje' });

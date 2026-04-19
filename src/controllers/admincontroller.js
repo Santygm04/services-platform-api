@@ -536,8 +536,13 @@ const updateAdminBanner = async (req, res) => {
 // ── DELETE /api/admin/banners/:id ────────────────────────
 const deleteAdminBanner = async (req, res) => {
   try {
-    await BannerAd.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Banner eliminado' });
+    const banner = await BannerAd.findByIdAndUpdate(
+      req.params.id,
+      { status: 'deleted' },
+      { new: true }
+    );
+    if (!banner) return res.status(404).json({ message: 'Banner no encontrado' });
+    res.json({ message: 'Banner marcado como eliminado', banner });
   } catch (err) {
     res.status(500).json({ message: 'Error interno' });
   }

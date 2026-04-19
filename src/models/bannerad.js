@@ -8,16 +8,11 @@ const mongoose = require('mongoose');
 // mobile        → entre filtros y resultados en mobile
 // featured      → banner destacado en Home (hero/top)
 const BANNER_POSITIONS = {
-  sidebar_left:   { label: 'Sidebar Izquierdo (Búsqueda)', pricePerWeek: 18000 },
-  sidebar_right:  { label: 'Sidebar Derecho (Búsqueda)',   pricePerWeek: 18000 },
-  sidebar:        { label: 'Sidebar (legacy)',             pricePerWeek: 18000 },
-
-  home_top:       { label: 'Banner Principal Home',        pricePerWeek: 35000 },
-  home_featured:  { label: 'Destacados Home',              pricePerWeek: 28000 },
-  featured:       { label: 'Banner Destacado',             pricePerWeek: 28000 },
-
-  home_sidebar:   { label: 'Sidebar Home',                 pricePerWeek: 18000 },
-  mobile:         { label: 'Banner Mobile',                pricePerWeek: 15000 },
+  sidebar:         { label: 'Sidebar Búsquedas (Ambos lados)',        pricePerWeek: 18000 },
+  home_top:        { label: 'Banner Principal Home',                   pricePerWeek: 35000 },
+  home_featured:   { label: 'Destacados Home',                        pricePerWeek: 28000 },
+  home_bottom:     { label: 'Banner Inferior Home',                   pricePerWeek: 15000 },
+  profile_sidebar: { label: 'Laterales Perfiles Buscador/Prestador',  pricePerWeek: 18000 },
 };
 const bannerAdSchema = new mongoose.Schema(
   {
@@ -55,19 +50,18 @@ const bannerAdSchema = new mongoose.Schema(
     // mobile                       → mobile entre filtros y resultados
     // featured                     → banner hero/top en Home
     position: {
-      type: String,
-      enum: [
-  'sidebar_left',
-  'sidebar_right',
-  'sidebar',
-  'home_top',
-  'home_featured',
-  'featured',
-  'home_sidebar',
-  'mobile'
-],  // 'sidebar' mantenido por retrocompatibilidad
-      default: 'sidebar_left',
-    },
+  type: String,
+  enum: [
+    'sidebar',
+    'home_top',
+    'home_featured',
+    'home_bottom',
+    'profile_sidebar',
+    'home_sidebar', // retrocompatibilidad
+    'mobile',       // retrocompatibilidad
+  ],
+  default: 'sidebar',
+},
 
     // Precio por semana en el momento de la compra (para historial)
     pricePerWeek: {
@@ -102,7 +96,7 @@ const bannerAdSchema = new mongoose.Schema(
     // Estado
     status: {
       type: String,
-      enum: ['pending_payment', 'active', 'expired', 'cancelled'],
+      enum: ['pending_payment', 'active', 'expired', 'cancelled', 'rejected', 'deleted', 'pending_approval'],
       default: 'pending_payment',
     },
 

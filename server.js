@@ -9,10 +9,55 @@ const PORT = process.env.PORT || 5000;
 
 connectDB();
 
-app.listen(PORT, () => {
+const http = require('http');
+const { Server } = require('socket.io');
+
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    credentials: true,
+  },
+});
+
+app.set('io', io);
+
+// 🧠 usuarios online
+const onlineUsers = new Map();
+
+io.on('connection', (socket) => {
+  console.log('🟢 Socket conectado:', socket.id);
+
+  socket.on('join', (userId) => {
+  console.log('📥 BACK: join recibido de:', userId);
+  socket.join(userId.toString()); // 🔥 CLAVE
+    console.log('🏠 BACK: usuario unido a room:', userId);
+  onlineUsers.set(userId.toString(), socket.id);
+  console.log('Usuario conectado:', userId);
+});
+
+  socket.on('disconnect', () => {
+    for (let [userId, sockId] of onlineUsers.entries()) {
+      if (sockId === socket.id) {
+        onlineUsers.delete(userId);
+        break;
+      }
+    }
+    console.log('🔴 Socket desconectado');
+  });
+});
+
+// 🚀 exportar para usar en controllers
+module.exports.io = io;
+module.exports.onlineUsers = onlineUsers;
+
+// 👇 IMPORTANTE: usar server.listen
+server.listen(PORT, () => {
   console.log(`Servidor corriendo en puerto ${PORT} — modo ${process.env.NODE_ENV}`);
 
-  // Expirar banners vencidos cada hora
   setInterval(expireBanners, 1000 * 60 * 60);
-  expireBanners(); // también al arrancar
+  expireBanners();
 });
+
+  

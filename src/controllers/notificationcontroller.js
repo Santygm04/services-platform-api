@@ -64,9 +64,33 @@ const markOneRead = async (req, res) => {
   }
 };
 
+// ── DELETE /api/notifications/:id ─────────────────────────────
+const deleteOne = async (req, res) => {
+  try {
+    await Notification.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
+    res.json({ message: 'Notificación eliminada' });
+  } catch (err) {
+    console.error('deleteOne error:', err);
+    res.status(500).json({ message: 'Error al eliminar' });
+  }
+};
+
+// ── DELETE /api/notifications ──────────────────────────────────
+const deleteAll = async (req, res) => {
+  try {
+    const result = await Notification.deleteMany({ userId: req.user._id });
+    res.json({ deleted: result.deletedCount });
+  } catch (err) {
+    console.error('deleteAll error:', err);
+    res.status(500).json({ message: 'Error al eliminar todas' });
+  }
+};
+
 module.exports = {
   getMyNotifications,
   getUnreadCount,
   markAllRead,
   markOneRead,
+  deleteOne,
+  deleteAll,
 };

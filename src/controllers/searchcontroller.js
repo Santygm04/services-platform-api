@@ -14,11 +14,13 @@ const searchProviders = async (req, res) => {
       urgent,
       page = 1,
       limit = 20,
+      
     } = req.query;
 
     const filter = {
-      profession: { $exists: true, $nin: [null, '', undefined] },
-    };
+  profession: { $exists: true, $nin: [null, '', undefined] },
+  activeStatus: { $ne: false },
+};
 
     if (keyword) {
       filter.$or = [
@@ -72,40 +74,55 @@ const searchProviders = async (req, res) => {
       filter.urgencyAvailable = true;
     }
 
-    const sort = {
-      plan: -1,
-      verified: -1,
-      ratingAverage: -1,
-      reviewsCount: -1,
-    };
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-
-    const providers = await ProviderProfile.find(filter)
+    // Traer todos para ordenar por plan correctamente antes de paginar
+    const allProviders = await ProviderProfile.find(filter)
       .populate('userId', 'name')
       .populate('category', 'name slug')
-      .select('-phone -viewsTracking -portfolio -links')
-      .sort(sort)
-      .skip(skip)
-      .limit(parseInt(limit));
+      .select('-phone -viewsTracking -portfolio -links ');
 
     const total = await ProviderProfile.countDocuments(filter);
 
-    const FREE_LIMIT = 5;
-    const isLimited = !req.user;
+    // ── Ordenar por plan con rotación cada 30 min ──────────
+    const rotationSlot = Math.floor(Date.now() / (30 * 60 * 1000));
 
-    const visibleProviders = isLimited
-      ? providers.slice(0, FREE_LIMIT)
-      : providers;
+    const premiums = allProviders.filter(p => p.plan === 'premium');
+    const plus     = allProviders.filter(p => p.plan === 'plus');
+    const free     = allProviders.filter(p => p.plan !== 'premium' && p.plan !== 'plus');
+
+    const rotate = (arr, slot) => {
+      if (arr.length <= 1) return arr;
+      const offset = slot % arr.length;
+      return [...arr.slice(offset), ...arr.slice(0, offset)];
+    };
+
+    const sorted = [
+      ...rotate(premiums, rotationSlot),
+      ...rotate(plus, rotationSlot),
+      ...free.sort((a, b) =>
+        (b.verified - a.verified) ||
+        (b.ratingAverage - a.ratingAverage) ||
+        (b.reviewsCount - a.reviewsCount)
+      ),
+    ];
+
+    const pageNum   = parseInt(page);
+    const limitNum  = parseInt(limit);
+    const skip      = (pageNum - 1) * limitNum;
+
+    const FREE_LIMIT   = 5;
+    const isLimited    = !req.user;
+    const sourceList   = isLimited ? sorted.slice(0, FREE_LIMIT) : sorted;
+    const paginated    = sourceList.slice(skip, skip + limitNum);
+    const effectiveTotal = isLimited ? Math.min(total, FREE_LIMIT) : total;
 
     res.json({
-      providers: visibleProviders,
+      providers: paginated,
       pagination: {
-        total,
-        page: parseInt(page),
-        pages: Math.ceil(total / parseInt(limit)),
+        total:   effectiveTotal,
+        page:    pageNum,
+        pages:   Math.ceil(effectiveTotal / limitNum),
       },
-      limited: isLimited,
+      limited:   isLimited,
       freeLimit: isLimited ? FREE_LIMIT : null,
     });
   } catch (error) {
@@ -118,8 +135,7 @@ const searchProviders = async (req, res) => {
 const getFeatured = async (req, res) => {
   try {
     const providers = await ProviderProfile.find({
-      plan: 'plus',
-      verified: true,
+      plan: { $in: ['plus', 'premium'] },
       profession: { $exists: true, $nin: [null, '', undefined] },
     })
       .populate('userId', 'name')

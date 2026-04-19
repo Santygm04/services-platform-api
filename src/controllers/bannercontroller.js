@@ -9,30 +9,19 @@ const mp = new MercadoPagoConfig({
 
 // ── Precios por posición (ARS/semana) ─────────────────────
 const SLOT_PRICES = {
-  // Sidebar lateral en resultados de búsqueda
-  sidebar_left:   18000,
-  sidebar_right:  18000,
-  sidebar:        18000,
-  // Banner principal en home (arriba del todo)
-  home_top:       35000,
-  // Notas destacadas home
-  home_featured:  28000,
-  featured:       28000,
-  // Sidebar home derecho
-  home_sidebar:   18000,
-  // Banner mobile (entre filtros y resultados)
-  mobile:         15000,
+  sidebar:         18000,
+  home_top:        35000,
+  home_featured:   28000,
+  home_bottom:     20000,
+  profile_sidebar: 18000,
 };
 
 const POSITION_LABELS = {
-  sidebar_left:   'Sidebar Lateral Izquierdo (Búsqueda)',
-  sidebar_right:  'Sidebar Lateral Derecho (Búsqueda)',
-  sidebar:        'Sidebar Lateral (Búsqueda)',
-  home_top:       'Banner Principal Home (Top)',
-  home_featured:  'Banner Notas Destacadas Home',
-  featured:       'Banner Destacado Home',
-  home_sidebar:   'Sidebar Home (Derecho)',
-  mobile:         'Banner Mobile (Búsqueda)',
+  sidebar:         'Sidebar Búsquedas (Ambos lados)',
+  home_top:        'Banner Principal Home (Top)',
+  home_featured:   'Banner Notas Destacadas Home',
+  home_bottom:     'Banner Inferior Home',
+  profile_sidebar: 'Laterales Perfiles Buscador/Prestador',
 };
 
 const uploadToCloudinary = (fileBuffer, folder, publicId) =>
@@ -57,16 +46,62 @@ const getActiveBanners = async (req, res) => {
 
     const result = {};
     for (const pos of Object.keys(SLOT_PRICES)) {
-      const positionBanners = pos === 'sidebar'
-        ? banners.filter(b => ['sidebar', 'sidebar_left', 'sidebar_right'].includes(b.position))
-        : banners.filter(b => b.position === pos);
+      const positionBanners =
+        pos === 'home_featured'
+          ? banners.filter(b => b.position === 'home_featured' || b.position === 'featured')
+          : pos === 'sidebar'
+          ? banners.filter(b => b.position === 'sidebar' || b.position === 'sidebar_left' || b.position === 'sidebar_right')
+          : banners.filter(b => b.position === pos);
 
       if (positionBanners.length > 0) {
-        const paid     = positionBanners.filter(b => b.amountPaid > 0);
-        const admin    = positionBanners.filter(b => b.amountPaid === 0);
-        const rotating = paid.length > 0 ? paid : admin;
+        const paid  = positionBanners.filter(b => b.amountPaid > 0);
+        const admin = positionBanners.filter(b => b.amountPaid === 0);
+        const pool  = paid.length > 0 ? paid : admin;
+
+        // ── Ordenar por plan del dueño del banner ──
+        // Para cada banner necesitamos saber el plan del usuario
+        // Los populate ya tienen userId, pero aquí solo tenemos el userId como ObjectId
+        // Así que ordenamos: premium > plus > free según amountPaid como proxy
+        // (los banners de premium pagan más)
+        // La rotación real se hace en el frontend con el ROTATE_INTERVAL
+
+        // Primero buscamos el plan de cada usuario de los banners
+        const User = require('../models/user');
+        const ProviderProfile = require('../models/providerprofile');
+
+        const withPlan = await Promise.all(pool.map(async (b) => {
+  try {
+    const profile = await ProviderProfile.findOne({ userId: b.userId }).select('plan').lean();
+    return { banner: b, plan: profile?.plan || 'free' };
+  } catch {
+    return { banner: b, plan: 'free' };
+  }
+}));
+
+// Agrupar por plan respetando orden premium > plus > free
+const planOrder = { premium: 0, plus: 1, free: 2 };
+const groups = { premium: [], plus: [], free: [] };
+withPlan.forEach(({ banner, plan }) => {
+  const key = planOrder[plan] !== undefined ? plan : 'free';
+  groups[key].push(banner);
+});
+
+// Rotar dentro de cada grupo cada 30 min
+const rotationSlot = Math.floor(Date.now() / (30 * 60 * 1000));
+const rotateArr = (arr) => {
+  if (arr.length <= 1) return arr;
+  const offset = rotationSlot % arr.length;
+  return [...arr.slice(offset), ...arr.slice(0, offset)];
+};
+
+const sorted = [
+  ...rotateArr(groups.premium),
+  ...rotateArr(groups.plus),
+  ...rotateArr(groups.free),
+].map(b => ({ _id: b._id, imageUrl: b.imageUrl, linkUrl: b.linkUrl, title: b.title }));
+
         result[pos] = {
-          banners:     rotating.map(b => ({ _id: b._id, imageUrl: b.imageUrl, linkUrl: b.linkUrl, title: b.title })),
+          banners:     sorted,
           isDefault:   false,
           totalActive: paid.length,
         };
@@ -95,8 +130,7 @@ const getBannerPrices = async (req, res) => {
 
     const availability = {};
     for (const [pos, price] of Object.entries(SLOT_PRICES)) {
-      if (pos === 'sidebar') continue;
-      const slot = occupied.find(b => b.position === pos);
+    const slot = occupied.find(b => b.position === pos);
       availability[pos] = {
         label:         POSITION_LABELS[pos],
         pricePerWeek:  price,
@@ -107,9 +141,8 @@ const getBannerPrices = async (req, res) => {
 
     const positions = {};
   for (const [pos, price] of Object.entries(SLOT_PRICES)) {
-  if (pos === 'sidebar') continue;
   positions[pos] = {
-    label:       POSITION_LABELS[pos],
+    label: POSITION_LABELS[pos],
     pricePerWeek: price,
   };
 }

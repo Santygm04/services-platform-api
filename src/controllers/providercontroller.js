@@ -183,20 +183,24 @@ const getAllProviders = async (req, res) => {
 // El campo `activeStatus` en ProviderProfile debe existir (boolean, default true).
 const toggleActiveStatus = async (req, res) => {
   try {
-    const profile = await ProviderProfile.findOne({ userId: req.user._id });
-    if (!profile) return res.status(404).json({ message: 'Perfil no encontrado' });
+    const current = await ProviderProfile.findOne({ userId: req.user._id }).select('activeStatus');
+    if (!current) return res.status(404).json({ message: 'Perfil no encontrado' });
 
-    // Si viene `active` en el body lo usa; si no, hace toggle
-    const next = req.body.active !== undefined
-      ? Boolean(req.body.active)
-      : !profile.activeStatus;
+    const activeFromBody = req.body?.active;
 
-    profile.activeStatus = next;
-    await profile.save();
+    const next = activeFromBody !== undefined
+      ? Boolean(activeFromBody)
+      : !current.activeStatus;
+
+    const updated = await ProviderProfile.findOneAndUpdate(
+      { userId: req.user._id },
+      { $set: { activeStatus: next } },
+      { new: true, select: 'activeStatus' }
+    );
 
     res.json({
-      message:      `Perfil marcado como ${next ? 'activo' : 'inactivo'}`,
-      activeStatus: profile.activeStatus,
+      message: `Perfil marcado como ${next ? 'activo' : 'inactivo'}`,
+      activeStatus: updated.activeStatus,
     });
   } catch (error) {
     console.error('toggleActiveStatus error:', error);
@@ -279,9 +283,8 @@ const getNearbyActivity = async (req, res) => {
 
     const filtered = allSeekers.filter(s =>
       s.userId &&
-      s.userId.status !== 'blocked'   &&
-      s.userId.status !== 'inactive'  &&
-      s.userId.emailVerified
+      s.userId.status !== 'blocked' &&
+      s.userId.status !== 'inactive'
     );
 
     const scored = filtered.map(s => {
@@ -289,11 +292,12 @@ const getNearbyActivity = async (req, res) => {
       let score          = 0;
       const label        = [];
       const profileIdStr = profile._id.toString();
+      const userIdStr    = req.user._id.toString();
 
       if (seekerZone === providerZone)                                  { score += 2; label.push('zona exacta'); }
       else if (zoneWords.some(w => seekerZone.includes(w)))             { score += 1; label.push('zona similar'); }
 
-      if (Array.isArray(s.favorites) && s.favorites.some(f => f.toString() === profileIdStr)) {
+      if (Array.isArray(s.favorites) && s.favorites.some(f => f.toString() === profileIdStr || f.toString() === userIdStr)) {
         score += 3; label.push('te tiene en favoritos');
       }
 
@@ -360,6 +364,8 @@ const getNearbySeekersForMe = async (req, res) => {
         score += 3; labels.push('te tiene en favoritos');
       }
 
+      console.log('seeker', s.userId.name, 'hasFavorited:', labels.includes('te tiene en favoritos'), 'favorites:', s.favorites);
+
       return {
         _id:             s._id,
         userId:          s.userId._id,
@@ -370,6 +376,7 @@ const getNearbySeekersForMe = async (req, res) => {
         relevanceScore:  score,
         relevanceLabels: labels,
         hasFavorited:    labels.includes('te tiene en favoritos'),
+        emailVerified:   s.userId.emailVerified || false,
       };
     });
 
