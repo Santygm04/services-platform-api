@@ -10,11 +10,11 @@ const { sendPlanUpgradeEmail } = require('../services/emailservice');
 // ── Configuración de planes ───────────────────────────────
 const PLAN_CONFIG = {
   plus: {
-    price: 4,                                       // ← FIX: estaba en 4
+    price: 4999,                                       // ← FIX: estaba en 4
     title: 'ZonaServicios Plus — Suscripción mensual',
   },
   premium: {
-    price: 10,
+    price: 9999,
     title: 'ZonaServicios Premium — Suscripción mensual',
   },
 };
@@ -136,6 +136,9 @@ try {
       notification_url:   `${process.env.BACKEND_URL}/api/subscriptions/webhook`,
     },
   });
+  return res.json({
+  initPoint: response.init_point,
+});
 } catch (mpError) {
   console.error('MP PreApproval error detallado:', JSON.stringify(mpError?.cause || mpError?.message || mpError));
   return res.status(500).json({
