@@ -174,13 +174,6 @@ const registerSeeker = async (req, res) => {
       console.log('EMAIL_PASS existe:', !!process.env.EMAIL_PASS);
       console.log('Destinatario:', email);
 
-    try {
-      const result = await sendVerificationEmail(email, name, emailToken);
-      console.log('✅ Email enviado OK:', result);
-    } catch (err) {
-      console.error('❌ sendVerificationEmail FAILED:', err?.message || err);
-    }
-
     if (zone?.trim()) {
       notifyProvidersInZone(name, zone.trim()).catch(() => {});
     }
@@ -191,6 +184,11 @@ const registerSeeker = async (req, res) => {
       token,
       user: { id: user._id, name: user.name, email: user.email, role: user.role, emailVerified: user.emailVerified },
     });
+
+    // Email DESPUÉS de responder para no bloquear el request
+    sendVerificationEmail(email, name, emailToken)
+      .then(() => console.log('✅ Email enviado a', email))
+      .catch(err => console.error('❌ Email falló:', err.message));
   } catch (err) {
     console.error('registerSeeker error:', err);
     res.status(500).json({ message: 'Error interno del servidor' });
@@ -242,18 +240,16 @@ const registerProvider = async (req, res) => {
       console.log('EMAIL_PASS existe:', !!process.env.EMAIL_PASS);
       console.log('Destinatario:', normalizedEmail);
 
-    try {
-      const result = await sendVerificationEmail(normalizedEmail, name.trim(), emailToken);
-      console.log('✅ Email enviado OK:', result);
-    }   catch (err) {
-      console.error('❌ sendVerificationEmail FAILED:', err?.message || err);
-      }
     const token = generateToken(user._id);
     res.status(201).json({
       message: 'Cuenta creada. Revisá tu email para verificarla.',
       token,
       user: { id: user._id, name: user.name, email: user.email, role: user.role, emailVerified: user.emailVerified },
     });
+
+    sendVerificationEmail(normalizedEmail, name.trim(), emailToken)
+      .then(() => console.log('✅ Email enviado a', normalizedEmail))
+      .catch(err => console.error('❌ Email falló:', err.message));
   } catch (err) {
     console.error('registerProvider error:', err);
     res.status(500).json({ message: 'Error interno del servidor' });
