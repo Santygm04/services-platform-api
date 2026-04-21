@@ -108,50 +108,54 @@ const createRecurring = async (req, res) => {
 
     const preApproval = new PreApproval(mp);
 
-    const startDate = new Date(Date.now() + 10000); // 10 segundos en el futuro
-    const endDate   = new Date();
-    endDate.setFullYear(endDate.getFullYear() + 5);
+const startDate = new Date(Date.now() + 60000); // 1 minuto en el futuro
+const endDate   = new Date();
+endDate.setFullYear(endDate.getFullYear() + 5);
 
-    const response = await preApproval.create({
-      body: {
-        reason:             cfg.title,
-        auto_recurring: {
-          frequency:          1,
-          frequency_type:     'months',
-          transaction_amount: cfg.price,
-          currency_id:        'ARS',
-          start_date:         startDate.toISOString(),
-          end_date:           endDate.toISOString(),
-        },
-        payer_email:        user.email,
-        back_url:           `${process.env.BACKEND_URL}/api/subscriptions/redirect/success?plan=${plan}`,
-        external_reference: `${user._id}|${plan}`,
-        notification_url:   `${process.env.BACKEND_URL}/api/subscriptions/webhook`,
+console.log('MP_ACCESS_TOKEN existe:', !!process.env.MP_ACCESS_TOKEN);
+console.log('BACKEND_URL:', process.env.BACKEND_URL);
+console.log('Payer email:', user.email);
+console.log('Plan:', plan, 'Price:', cfg.price);
+
+let response;
+try {
+  response = await preApproval.create({
+    body: {
+      reason:         cfg.title,
+      auto_recurring: {
+        frequency:          1,
+        frequency_type:     'months',
+        transaction_amount: cfg.price,
+        currency_id:        'ARS',
+        start_date:         startDate.toISOString(),
+        end_date:           endDate.toISOString(),
       },
+      payer_email:        user.email,
+      back_url:           `${process.env.BACKEND_URL}/api/subscriptions/redirect/success?plan=${plan}`,
+      external_reference: `${user._id}|${plan}`,
+      notification_url:   `${process.env.BACKEND_URL}/api/subscriptions/webhook`,
+    },
+  });
+} catch (mpError) {
+  console.error('MP PreApproval error detallado:', JSON.stringify(mpError?.cause || mpError?.message || mpError));
+  return res.status(500).json({
+    message: 'Error de MercadoPago al crear suscripción',
+    detail: mpError?.message,
+    cause: mpError?.cause,
+  });
+}
+   } catch (err) {
+    console.error('createRecurring error completo:', JSON.stringify({
+      message: err?.message,
+      cause:   err?.cause,
+      status:  err?.status,
+      error:   err?.error,
+    }));
+    res.status(500).json({
+      message: 'Error al crear suscripción recurrente',
+      detail:  err?.message,
+      cause:   err?.cause,
     });
-
-    console.log('createRecurring MP response:', JSON.stringify(response));
-
-    // En sandbox MP devuelve sandbox_init_point, en producción init_point
-    const initPoint = response?.init_point || response?.sandbox_init_point;
-
-    if (!initPoint) {
-      console.error('createRecurring — MP no devolvió init_point:', response);
-      return res.status(500).json({
-        message: 'MercadoPago no devolvió URL de pago. Verificá las credenciales y que BACKEND_URL sea una URL pública (no localhost).',
-        mpResponse: response,
-      });
-    }
-
-    res.json({
-      subscriptionId: response.id,
-      initPoint,
-      plan,
-      price: cfg.price,
-    });
-  } catch (err) {
-    console.error('createRecurring error:', err);
-    res.status(500).json({ message: 'Error al crear suscripción recurrente' });
   }
 };
 

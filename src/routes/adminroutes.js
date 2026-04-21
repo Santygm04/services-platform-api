@@ -143,4 +143,31 @@ router.post('/banners',       adminCreateBanner);
 router.patch('/banners/:id',  adminUpdateBanner);
 router.delete('/banners/:id', adminDeleteBanner);
 
+// ── Categorías ──────────────────────────────────────────
+const ServiceCategory = require('../models/servicecategory');
+
+router.post('/categories', async (req, res) => {
+  try {
+    const { name, slug, icon, subcategories } = req.body;
+    const existing = await ServiceCategory.findOne({ slug });
+    if (existing) return res.status(400).json({ message: 'Ya existe una categoría con ese slug' });
+    const cat = await ServiceCategory.create({ name, slug, icon: icon || '🔧', subcategories: subcategories || [], active: true });
+    res.status(201).json({ category: cat });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+router.patch('/categories/:id', async (req, res) => {
+  try {
+    const cat = await ServiceCategory.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    res.json({ category: cat });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+router.delete('/categories/:id', async (req, res) => {
+  try {
+    await ServiceCategory.findByIdAndDelete(req.params.id);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
 module.exports = router;

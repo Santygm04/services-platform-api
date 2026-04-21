@@ -319,7 +319,9 @@ router.get('/seed-categories', async (req, res) => {
       { name: 'Instructor de golf', slug: 'golf', icon: '⛳', subcategories: [{ name: 'Golf iniciación', slug: 'golf-iniciacion' }, { name: 'Golf avanzado', slug: 'golf-avanzado' }], active: true },
       { name: 'Instructor de paddle', slug: 'paddle', icon: '🏓', subcategories: [{ name: 'Paddle adultos', slug: 'paddle-adultos' }, { name: 'Paddle infantil', slug: 'paddle-infantil' }], active: true },
       { name: 'Instructor de surf', slug: 'surf', icon: '🏄', subcategories: [{ name: 'Iniciación al surf', slug: 'surf-iniciacion' }, { name: 'Perfeccionamiento', slug: 'surf-avanzado' }], active: true },
-      { name: 'Instructor de escalada', slug: 'escalada', icon: '🧗', subcategories: [{ name: 'Escalada en roca', slug: 'escalada-roca' }, { name: 'Escalada en boulder', slug: 'boulder' }], active: true },
+      { name: 'Instructor de escalada', slug: 'escalada', icon: '🧗', subcategories: [{ name: 'Escalada en roca', slug: 'escalada-roca' }, { name: 'Escalada en boulder', slug: 'boulder' }], active: true }, { name: 'Diseñador de interiores', slug: 'disenador-interiores', icon: '🛋️', subcategories: [{ name: 'Diseño residencial', slug: 'diseno-residencial' }, { name: 'Diseño comercial', slug: 'diseno-comercial' }, { name: 'Reformas integrales', slug: 'reformas-integrales-int' }], active: true },
+      { name: 'Durlero', slug: 'durlero', icon: '🏗️', subcategories: [{ name: 'Tabiques de durlock', slug: 'tabiques-durlock' }, { name: 'Cielorrasos de durlock', slug: 'cielorrasos-durlock' }, { name: 'Construcción en seco', slug: 'construccion-seco' }], active: true },
+      { name: 'Empleada doméstica', slug: 'empleada-domestica', icon: '🏠', subcategories: [{ name: 'Limpieza por horas', slug: 'limpieza-horas' }, { name: 'Limpieza fija', slug: 'limpieza-fija' }, { name: 'Cuidado del hogar', slug: 'cuidado-hogar' }], active: true },
     ];
     let inserted = 0;
     for (const cat of newCats) {
