@@ -21,9 +21,17 @@ const getMyProfile = async (req, res) => {
 
 const updateMyProfile = async (req, res) => {
   try {
-    const allowedFields = ['profession', 'zone', 'bio', 'phone', 'urgencyAvailable'];
-    const updates = {};
+    // Primero buscar el perfil para saber el plan actual
+    const existing = await ProviderProfile.findOne({ userId: req.user._id });
+    if (!existing) {
+      return res.status(404).json({ message: 'Perfil no encontrado' });
+    }
 
+    const isPremium = existing.plan === 'premium';
+    const allowedFields = ['profession', 'zone', 'bio', 'phone'];
+    if (isPremium) allowedFields.push('urgencyAvailable');
+
+    const updates = {};
     allowedFields.forEach((field) => {
       if (req.body[field] !== undefined) {
         updates[field] = req.body[field];
@@ -35,10 +43,6 @@ const updateMyProfile = async (req, res) => {
       { $set: updates },
       { new: true, runValidators: true }
     );
-
-    if (!profile) {
-      return res.status(404).json({ message: 'Perfil no encontrado' });
-    }
 
     res.json({ message: 'Perfil actualizado', profile });
   } catch (error) {

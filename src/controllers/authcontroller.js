@@ -169,7 +169,9 @@ const registerSeeker = async (req, res) => {
     const user       = await User.create({ name, email, password, role: 'seeker', emailVerificationToken: emailToken });
     await SeekerProfile.create({ userId: user._id, zone: zone?.trim() || '' });
 
-    sendVerificationEmail(email, name, emailToken).catch(err => console.error('sendVerificationEmail error:', err));
+    sendVerificationEmail(email, name, emailToken).catch(err => {
+    console.error('❌ sendVerificationEmail FAILED:', err?.message || err);
+    });
 
     if (zone?.trim()) {
       notifyProvidersInZone(name, zone.trim()).catch(() => {});

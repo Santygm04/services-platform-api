@@ -3,14 +3,19 @@ const nodemailer = require('nodemailer');
 // ── Transporter ───────────────────────────────────────────
 const createTransporter = () => {
   if (process.env.NODE_ENV === 'production') {
-    return nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
-  }
+  return nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+    tls: {
+      rejectUnauthorized: false,
+    },
+  });
+}
   return nodemailer.createTransport({
     host: 'smtp.ethereal.email',
     port: 587,
@@ -101,7 +106,7 @@ const sendVerificationEmail = async (to, name, token) => {
     </p>
   `);
   await transporter.sendMail({
-    from: `"${BRAND.name}" <${process.env.EMAIL_USER}>`,
+    from: process.env.EMAIL_USER,
     to, subject: '✅ Verificá tu cuenta en ZonaServicios', html,
   });
 };
@@ -123,7 +128,7 @@ const sendWelcomeEmail = async (to, name, role) => {
     </div>
   `);
   await transporter.sendMail({
-    from: `"${BRAND.name}" <${process.env.EMAIL_USER}>`,
+    from: process.env.EMAIL_USER,
     to, subject: '🎉 ¡Tu cuenta en ZonaServicios está activa!', html,
   });
 };
@@ -146,7 +151,7 @@ const sendNewReviewEmail = async (to, providerName, reviewerAlias, rating, comme
     </div>
   `);
   await transporter.sendMail({
-    from: `"${BRAND.name}" <${process.env.EMAIL_USER}>`,
+    from: process.env.EMAIL_USER,
     to, subject: `⭐ Nueva reseña de ${reviewerAlias}`, html,
   });
 };
@@ -169,7 +174,7 @@ const sendUpgradePlusEmail = async (to, name) => {
     </div>
   `);
   await transporter.sendMail({
-    from: `"${BRAND.name}" <${process.env.EMAIL_USER}>`,
+    from: process.env.EMAIL_USER,
     to, subject: '⭐ ¡Tu Plan Plus está activo!', html,
   });
 };
@@ -187,7 +192,7 @@ const sendVerifiedProviderEmail = async (to, name) => {
     </div>
   `);
   await transporter.sendMail({
-    from: `"${BRAND.name}" <${process.env.EMAIL_USER}>`,
+    from: process.env.EMAIL_USER,
     to, subject: '✅ Tu perfil fue verificado en ZonaServicios', html,
   });
 };
@@ -208,7 +213,7 @@ const sendPasswordResetEmail = async (to, name, token) => {
     </p>
   `);
   await transporter.sendMail({
-    from: `"${BRAND.name}" <${process.env.EMAIL_USER}>`,
+    from: process.env.EMAIL_USER,
     to, subject: '🔐 Restablecer contraseña - ZonaServicios', html,
   });
 };
@@ -306,7 +311,7 @@ const sendPlanUpgradeEmail = async (to, name, plan, expiresAt) => {
   `);
 
   await transporter.sendMail({
-    from: `"${BRAND.name}" <${process.env.EMAIL_USER}>`,
+    from: process.env.EMAIL_USER,
     to,
     subject: `${cfg.emoji} ¡Tu Plan ${cfg.label} está activo! — ZonaServicios`,
     html,
