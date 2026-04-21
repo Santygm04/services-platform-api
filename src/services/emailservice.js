@@ -1,36 +1,5 @@
-const nodemailer = require('nodemailer');
-
-// ── Transporter ───────────────────────────────────────────
-const createTransporter = () => {
-  if (process.env.NODE_ENV === 'production') {
-  return nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
-    family: 4,              // ← esto fuerza IPv4
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-    tls: {
-      rejectUnauthorized: false,
-    },
-    connectionTimeout: 10000,
-    greetingTimeout:   10000,
-    socketTimeout:     15000,
-  });
-}
-  return nodemailer.createTransport({
-    host: 'smtp.ethereal.email',
-    port: 587,
-    auth: {
-      user: process.env.ETHEREAL_USER || 'test@ethereal.email',
-      pass: process.env.ETHEREAL_PASS || 'testpass',
-    },
-  });
-};
-
-const transporter = createTransporter();
+const { Resend } = require('resend');
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const BRAND = {
   name:   'ZonaServicios',
@@ -38,6 +7,8 @@ const BRAND = {
   accent: '#0EA5E9',
   url:    process.env.FRONTEND_URL || 'http://localhost:5173',
 };
+
+const FROM = 'ZonaServicios <onboarding@resend.dev>';
 
 // ── Template base ─────────────────────────────────────────
 const baseTemplate = (content) => `
@@ -53,7 +24,6 @@ const baseTemplate = (content) => `
     <tr>
       <td align="center">
         <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;">
-          <!-- Header -->
           <tr>
             <td style="background:${BRAND.color};border-radius:16px 16px 0 0;padding:28px 32px;text-align:center;">
               <span style="font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.5px;">
@@ -61,7 +31,6 @@ const baseTemplate = (content) => `
               </span>
             </td>
           </tr>
-          <!-- Body -->
           <tr>
             <td style="background:#ffffff;padding:36px 32px;border-radius:0 0 16px 16px;">
               ${content}
@@ -82,7 +51,6 @@ const baseTemplate = (content) => `
 const btnStyle = (color = BRAND.color) =>
   `display:inline-block;background:${color};color:#fff;text-decoration:none;padding:14px 28px;border-radius:10px;font-weight:600;font-size:15px;margin:20px 0;`;
 
-// ── Helper: formatear fecha en español ────────────────────
 const formatDate = (date) => {
   if (!date) return '';
   return new Date(date).toLocaleDateString('es-AR', {
@@ -94,7 +62,6 @@ const formatDate = (date) => {
 //  EMAILS
 // ════════════════════════════════════════════════════════════
 
-// 1. Verificación de email
 const sendVerificationEmail = async (to, name, token) => {
   const url  = `${BRAND.url}/verify-email?token=${token}`;
   const html = baseTemplate(`
@@ -109,13 +76,9 @@ const sendVerificationEmail = async (to, name, token) => {
       Este enlace expira en 24 horas. Si no creaste una cuenta, ignorá este email.
     </p>
   `);
-  await transporter.sendMail({
-    from: `"ZonaServicios" <${process.env.EMAIL_USER}>`,
-    to, subject: '✅ Verificá tu cuenta en ZonaServicios', html,
-  });
+  await resend.emails.send({ from: FROM, to, subject: '✅ Verificá tu cuenta en ZonaServicios', html });
 };
 
-// 2. Bienvenida post-verificación
 const sendWelcomeEmail = async (to, name, role) => {
   const isProvider = role === 'provider';
   const html = baseTemplate(`
@@ -131,13 +94,9 @@ const sendWelcomeEmail = async (to, name, role) => {
       </a>
     </div>
   `);
-  await transporter.sendMail({
-    from: `"ZonaServicios" <${process.env.EMAIL_USER}>`,
-    to, subject: '🎉 ¡Tu cuenta en ZonaServicios está activa!', html,
-  });
+  await resend.emails.send({ from: FROM, to, subject: '🎉 ¡Tu cuenta en ZonaServicios está activa!', html });
 };
 
-// 3. Nueva reseña recibida (al prestador)
 const sendNewReviewEmail = async (to, providerName, reviewerAlias, rating, comment) => {
   const stars = '★'.repeat(rating) + '☆'.repeat(5 - rating);
   const html  = baseTemplate(`
@@ -154,13 +113,9 @@ const sendNewReviewEmail = async (to, providerName, reviewerAlias, rating, comme
       <a href="${BRAND.url}/dashboard" style="${btnStyle()}">Ver en mi panel</a>
     </div>
   `);
-  await transporter.sendMail({
-    from: `"ZonaServicios" <${process.env.EMAIL_USER}>`,
-    to, subject: `⭐ Nueva reseña de ${reviewerAlias}`, html,
-  });
+  await resend.emails.send({ from: FROM, to, subject: `⭐ Nueva reseña de ${reviewerAlias}`, html });
 };
 
-// 4. Upgrade a Plus confirmado
 const sendUpgradePlusEmail = async (to, name) => {
   const html = baseTemplate(`
     <h2 style="color:#0B1F3A;font-size:22px;margin:0 0 8px;">¡Bienvenido/a al Plan Plus! ⭐</h2>
@@ -177,13 +132,9 @@ const sendUpgradePlusEmail = async (to, name) => {
       <a href="${BRAND.url}/dashboard" style="${btnStyle('#D97706')}">Ir a mi panel Plus</a>
     </div>
   `);
-  await transporter.sendMail({
-    from: `"ZonaServicios" <${process.env.EMAIL_USER}>`,
-    to, subject: '⭐ ¡Tu Plan Plus está activo!', html,
-  });
+  await resend.emails.send({ from: FROM, to, subject: '⭐ ¡Tu Plan Plus está activo!', html });
 };
 
-// 5. Verificación aprobada
 const sendVerifiedProviderEmail = async (to, name) => {
   const html = baseTemplate(`
     <h2 style="color:#0B1F3A;font-size:22px;margin:0 0 8px;">¡Tu perfil fue verificado! ✅</h2>
@@ -195,13 +146,9 @@ const sendVerifiedProviderEmail = async (to, name) => {
       <a href="${BRAND.url}/dashboard" style="${btnStyle('#22C55E')}">Ver mi perfil</a>
     </div>
   `);
-  await transporter.sendMail({
-    from: `"ZonaServicios" <${process.env.EMAIL_USER}>`,
-    to, subject: '✅ Tu perfil fue verificado en ZonaServicios', html,
-  });
+  await resend.emails.send({ from: FROM, to, subject: '✅ Tu perfil fue verificado en ZonaServicios', html });
 };
 
-// 6. Recuperar contraseña
 const sendPasswordResetEmail = async (to, name, token) => {
   const url  = `${BRAND.url}/reset-password?token=${token}`;
   const html = baseTemplate(`
@@ -216,23 +163,14 @@ const sendPasswordResetEmail = async (to, name, token) => {
       Este enlace expira en 1 hora. Si no solicitaste esto, ignorá este email.
     </p>
   `);
-  await transporter.sendMail({
-    from: `"ZonaServicios" <${process.env.EMAIL_USER}>`,
-    to, subject: '🔐 Restablecer contraseña - ZonaServicios', html,
-  });
+  await resend.emails.send({ from: FROM, to, subject: '🔐 Restablecer contraseña - ZonaServicios', html });
 };
 
-// 7. Upgrade de plan — Plus o Premium
-// Llamado desde authcontroller.js → upgradePlan() y adminUpgradePlan()
 const sendPlanUpgradeEmail = async (to, name, plan, expiresAt) => {
   const isPremium = plan === 'premium';
-
   const planConfig = {
     plus: {
-      emoji:    '⭐',
-      label:    'Plus',
-      color:    '#D97706',       // ámbar
-      price:    '$4.999',
+      emoji: '⭐', label: 'Plus', color: '#D97706', price: '$4.999',
       features: [
         '📸 Portfolio de fotos de trabajo',
         '🔗 Links a redes sociales y sitio web',
@@ -243,10 +181,7 @@ const sendPlanUpgradeEmail = async (to, name, plan, expiresAt) => {
       ],
     },
     premium: {
-      emoji:    '👑',
-      label:    'Premium',
-      color:    '#B45309',       // dorado oscuro
-      price:    '$10.000',
+      emoji: '👑', label: 'Premium', color: '#B45309', price: '$10.000',
       features: [
         '✅ Todo lo del Plan Plus',
         '👑 Badge dorado Premium en búsquedas',
@@ -258,10 +193,9 @@ const sendPlanUpgradeEmail = async (to, name, plan, expiresAt) => {
     },
   };
 
-  const cfg      = planConfig[plan] || planConfig.plus;
-  const expDate  = formatDate(expiresAt);
-
-  const html = baseTemplate(`
+  const cfg     = planConfig[plan] || planConfig.plus;
+  const expDate = formatDate(expiresAt);
+  const html    = baseTemplate(`
     <h2 style="color:#0B1F3A;font-size:22px;margin:0 0 8px;">
       ${cfg.emoji} ¡Bienvenido/a al Plan ${cfg.label}!
     </h2>
@@ -269,32 +203,16 @@ const sendPlanUpgradeEmail = async (to, name, plan, expiresAt) => {
       Hola <strong>${name}</strong>, tu suscripción <strong>${cfg.label}</strong> ya está activa.
       ${expDate ? `Tu plan está activo hasta el <strong>${expDate}</strong>.` : ''}
     </p>
-
-    <!-- Badge de plan -->
     <div style="text-align:center;margin:16px 0 24px;">
-      <span style="
-        display:inline-block;
-        background:${cfg.color};
-        color:#fff;
-        font-size:13px;
-        font-weight:700;
-        padding:6px 18px;
-        border-radius:999px;
-        letter-spacing:0.5px;
-      ">
+      <span style="display:inline-block;background:${cfg.color};color:#fff;font-size:13px;font-weight:700;padding:6px 18px;border-radius:999px;letter-spacing:0.5px;">
         ${cfg.emoji} PLAN ${cfg.label.toUpperCase()} ACTIVO
       </span>
     </div>
-
-    <p style="color:#0B1F3A;font-size:14px;font-weight:600;margin:0 0 10px;">
-      Lo que tenés disponible ahora:
-    </p>
+    <p style="color:#0B1F3A;font-size:14px;font-weight:600;margin:0 0 10px;">Lo que tenés disponible ahora:</p>
     <ul style="color:#475569;font-size:14px;line-height:2.1;padding-left:20px;margin:0 0 24px;">
       ${cfg.features.map(f => `<li>${f}</li>`).join('')}
     </ul>
-
     ${isPremium ? `
-    <!-- Recordatorio banner gratis (solo Premium) -->
     <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:12px;padding:16px 20px;margin-bottom:20px;">
       <p style="margin:0;color:#92400E;font-size:13px;font-weight:600;">
         🎁 Recordatorio: Tu plan Premium incluye un banner publicitario gratis por mes.
@@ -302,32 +220,22 @@ const sendPlanUpgradeEmail = async (to, name, plan, expiresAt) => {
       </p>
     </div>
     ` : ''}
-
     <div style="text-align:center;">
-      <a href="${BRAND.url}/dashboard" style="${btnStyle(cfg.color)}">
-        Ir a mi panel ${cfg.label}
-      </a>
+      <a href="${BRAND.url}/dashboard" style="${btnStyle(cfg.color)}">Ir a mi panel ${cfg.label}</a>
     </div>
-
     <p style="color:#94A3B8;font-size:12px;text-align:center;margin:8px 0 0;">
       ${expDate ? `Tu plan se renueva el ${expDate}. Podés cancelarlo en cualquier momento desde tu panel.` : ''}
     </p>
   `);
-
-  await transporter.sendMail({
-    from: `"ZonaServicios" <${process.env.EMAIL_USER}>`,
-    to,
-    subject: `${cfg.emoji} ¡Tu Plan ${cfg.label} está activo! — ZonaServicios`,
-    html,
-  });
+  await resend.emails.send({ from: FROM, to, subject: `${cfg.emoji} ¡Tu Plan ${cfg.label} está activo! — ZonaServicios`, html });
 };
 
 module.exports = {
   sendVerificationEmail,
   sendWelcomeEmail,
   sendNewReviewEmail,
-  sendUpgradePlusEmail,       // legacy — se puede seguir usando
+  sendUpgradePlusEmail,
   sendVerifiedProviderEmail,
   sendPasswordResetEmail,
-  sendPlanUpgradeEmail,       // nuevo — maneja Plus Y Premium
+  sendPlanUpgradeEmail,
 };
