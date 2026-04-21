@@ -273,7 +273,12 @@ const login = async (req, res) => {
       return res.status(403).json({ message: 'Tu cuenta fue suspendida. Contactá al soporte.' });
 
     const isMatch = await user.matchPassword(password);
-    if (!isMatch) return res.status(401).json({ message: 'Email o contraseña incorrectos' });
+    if (!isMatch) {
+    if (user.googleId) {
+      return res.status(401).json({ message: 'Esta cuenta fue creada con Google. Usá "Continuar con Google" para ingresar.' });
+      }
+      return res.status(401).json({ message: 'Email o contraseña incorrectos' });
+    }
 
     const token    = generateToken(user._id);
     const userData = await buildUserResponse(user);

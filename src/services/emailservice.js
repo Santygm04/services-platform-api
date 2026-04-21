@@ -3,8 +3,8 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 const BRAND = {
   name:   'ZonaServicios',
-  color:  '#2563C4',
-  accent: '#0EA5E9',
+  color:  '#16A34A',
+  accent: '#22C55E',
   url:    process.env.FRONTEND_URL || 'http://localhost:5173',
 };
 
