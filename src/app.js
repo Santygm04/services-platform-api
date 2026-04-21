@@ -205,4 +205,30 @@ app.use((err, req, res, next) => {
   res.status(status).json({ message: err.message || 'Error interno del servidor' });
 });
 
+// TEST DE EMAIL — borralo después de confirmar que funciona
+const nodemailer = require('nodemailer');
+const testTransporter = nodemailer.createTransport({
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+  tls: { rejectUnauthorized: false },
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 15000,
+});
+
+testTransporter.verify((error, success) => {
+  if (error) {
+    console.error('❌ SMTP VERIFY FAILED:', error.message);
+    console.error('Código:', error.code);
+    console.error('Respuesta:', error.response);
+  } else {
+    console.log('✅ SMTP CONECTADO OK — listo para enviar emails');
+  }
+});
+
 module.exports = app;

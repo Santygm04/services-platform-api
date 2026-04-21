@@ -14,7 +14,7 @@ const createTransporter = () => {
     tls: {
       rejectUnauthorized: false,
     },
-    connectionTimeout: 10000,   // ← corta si no conecta en 10s
+    connectionTimeout: 10000,
     greetingTimeout:   10000,
     socketTimeout:     15000,
   });
