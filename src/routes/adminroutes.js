@@ -170,4 +170,14 @@ router.delete('/categories/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
+router.get('/categories', async (req, res) => {
+  try {
+    const ServiceCategory = require('../models/servicecategory');
+    const cats = await ServiceCategory.find().sort({ name: 1 });
+    res.json({ categories: cats });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}); 
+
 module.exports = router;

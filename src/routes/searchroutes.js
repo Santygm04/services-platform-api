@@ -334,4 +334,14 @@ router.get('/seed-categories', async (req, res) => {
   }
 });
 
+router.get('/activate-all-categories', async (req, res) => {
+  try {
+    const ServiceCategory = require('../models/servicecategory');
+    const result = await ServiceCategory.updateMany({}, { active: true });
+    res.json({ ok: true, updated: result.modifiedCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
