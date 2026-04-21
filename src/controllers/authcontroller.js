@@ -169,9 +169,17 @@ const registerSeeker = async (req, res) => {
     const user       = await User.create({ name, email, password, role: 'seeker', emailVerificationToken: emailToken });
     await SeekerProfile.create({ userId: user._id, zone: zone?.trim() || '' });
 
-    sendVerificationEmail(email, name, emailToken).catch(err => {
-    console.error('❌ sendVerificationEmail FAILED:', err?.message || err);
-    });
+      console.log('=== INTENTO DE EMAIL (seeker) ===');
+      console.log('EMAIL_USER:', process.env.EMAIL_USER);
+      console.log('EMAIL_PASS existe:', !!process.env.EMAIL_PASS);
+      console.log('Destinatario:', email);
+
+    try {
+      const result = await sendVerificationEmail(email, name, emailToken);
+      console.log('✅ Email enviado OK:', result);
+    } catch (err) {
+      console.error('❌ sendVerificationEmail FAILED:', err?.message || err);
+    }
 
     if (zone?.trim()) {
       notifyProvidersInZone(name, zone.trim()).catch(() => {});
@@ -229,9 +237,17 @@ const registerProvider = async (req, res) => {
       referredBy:  referredByUserId,
     });
 
-    sendVerificationEmail(normalizedEmail, name.trim(), emailToken)
-      .catch(err => console.error('sendVerificationEmail error:', err));
+      console.log('=== INTENTO DE EMAIL ===');
+      console.log('EMAIL_USER:', process.env.EMAIL_USER);
+      console.log('EMAIL_PASS existe:', !!process.env.EMAIL_PASS);
+      console.log('Destinatario:', normalizedEmail);
 
+    try {
+      const result = await sendVerificationEmail(normalizedEmail, name.trim(), emailToken);
+      console.log('✅ Email enviado OK:', result);
+    }   catch (err) {
+      console.error('❌ sendVerificationEmail FAILED:', err?.message || err);
+      }
     const token = generateToken(user._id);
     res.status(201).json({
       message: 'Cuenta creada. Revisá tu email para verificarla.',
