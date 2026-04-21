@@ -643,4 +643,5 @@ module.exports = {
   globalSearch, verifyUserEmail,
   getAdminBanners, updateAdminBanner, deleteAdminBanner, createAdminBanner,
   deleteGhostProvider,
+  createAdminLog, getAdminLogs,
 };
