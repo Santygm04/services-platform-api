@@ -604,6 +604,35 @@ const createAdminBanner = async (req, res) => {
   }
 };
 
+const AdminLog = require('../models/AdminLog'); // ajustá el path si está en models/
+// ── POST /api/admin/logs ─────────────────────────────────
+const createAdminLog = async (req, res) => {
+  try {
+    const { action, targetType, targetId, targetName, detail } = req.body;
+    await AdminLog.create({
+      adminId:   req.user._id,
+      adminName: req.user.name,
+      action, targetType, targetId, targetName, detail,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ message: 'Error al guardar log' });
+  }
+};
+
+// ── GET /api/admin/logs ──────────────────────────────────
+const getAdminLogs = async (req, res) => {
+  try {
+    const { page = 1, limit = 50 } = req.query;
+    const AdminLog = require('../models/AdminLog');
+    const logs  = await AdminLog.find().sort({ createdAt: -1 }).skip((page-1)*limit).limit(Number(limit));
+    const total = await AdminLog.countDocuments();
+    res.json({ logs, total, pages: Math.ceil(total / limit) });
+  } catch (err) {
+    res.status(500).json({ message: 'Error al obtener logs' });
+  }
+};
+
 module.exports = {
   getMetrics, getActivity, getLiveSnapshot,
   getFeaturedProviders, toggleUrgency,
