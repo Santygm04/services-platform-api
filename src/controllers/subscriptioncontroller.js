@@ -10,7 +10,7 @@ const { sendPlanUpgradeEmail } = require('../services/emailservice');
 // ── Configuración de planes ───────────────────────────────
 const PLAN_CONFIG = {
   plus: {
-    price: 4,                                       // ← FIX: estaba en 4
+    price: 4999,                                       // ← FIX: estaba en 4
     title: 'ZonaServicios Plus — Suscripción mensual',
   },
   premium: {
