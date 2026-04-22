@@ -171,11 +171,9 @@ router.delete('/categories/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-
 router.post('/logs',       createAdminLog);
 router.get('/logs',        getAdminLogs);
 router.delete('/logs/:id', deleteAdminLog);
-
 
 router.get('/categories', async (req, res) => {
   try {
