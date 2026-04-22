@@ -26,7 +26,7 @@ const {
   globalSearch, verifyUserEmail,
   getAdminBanners, updateAdminBanner, deleteAdminBanner, createAdminBanner,
   deleteGhostProvider,
-  createAdminLog, getAdminLogs,
+  createAdminLog, getAdminLogs, deleteAdminLog,
 } = require('../controllers/admincontroller');
 
 const {
@@ -172,8 +172,10 @@ router.delete('/categories/:id', async (req, res) => {
 });
 
 
-router.post('/logs', createAdminLog);
-router.get('/logs',  getAdminLogs);
+router.post('/logs',       createAdminLog);
+router.get('/logs',        getAdminLogs);
+router.delete('/logs/:id', deleteAdminLog);
+
 
 router.get('/categories', async (req, res) => {
   try {

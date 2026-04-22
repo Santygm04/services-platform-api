@@ -620,14 +620,38 @@ const createAdminLog = async (req, res) => {
   }
 };
 
+const deleteAdminLog = async (req, res) => {
+  try {
+    const AdminLog = require('../models/AdminLog');
+    const log = await AdminLog.findByIdAndDelete(req.params.id);
+    if (!log) return res.status(404).json({ message: 'Log no encontrado' });
+    res.json({ ok: true, message: 'Log eliminado' });
+  } catch (err) {
+    res.status(500).json({ message: 'Error al eliminar log' });
+  }
+};
+
 // ── GET /api/admin/logs ──────────────────────────────────
 const getAdminLogs = async (req, res) => {
   try {
-    const { page = 1, limit = 50 } = req.query;
+    const { page = 1, limit = 50, action, search } = req.query;
     const AdminLog = require('../models/AdminLog');
-    const logs  = await AdminLog.find().sort({ createdAt: -1 }).skip((page-1)*limit).limit(Number(limit));
-    const total = await AdminLog.countDocuments();
-    res.json({ logs, total, pages: Math.ceil(total / limit) });
+    
+    const filter = {};
+    if (action) filter.action = { $regex: action, $options: 'i' };
+    if (search) {
+      filter.$or = [
+        { adminName:  { $regex: search, $options: 'i' } },
+        { targetName: { $regex: search, $options: 'i' } },
+        { action:     { $regex: search, $options: 'i' } },
+        { detail:     { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    const skip  = (parseInt(page) - 1) * parseInt(limit);
+    const logs  = await AdminLog.find(filter).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit));
+    const total = await AdminLog.countDocuments(filter);
+    res.json({ logs, total, pages: Math.ceil(total / parseInt(limit)) });
   } catch (err) {
     res.status(500).json({ message: 'Error al obtener logs' });
   }
@@ -643,5 +667,5 @@ module.exports = {
   globalSearch, verifyUserEmail,
   getAdminBanners, updateAdminBanner, deleteAdminBanner, createAdminBanner,
   deleteGhostProvider,
-  createAdminLog, getAdminLogs,
+  createAdminLog, getAdminLogs, deleteAdminLog,
 };
