@@ -255,13 +255,30 @@ const getUsers = async (req, res) => {
     const total = await User.countDocuments(filter);
 
     const usersWithProfile = await Promise.all(users.map(async u => {
-      const obj = u.toObject();
-      if (u.role === 'provider') {
-        obj.profile = await ProviderProfile.findOne({ userId: u._id })
-          .select('profession zone plan verified profilePhoto ratingAverage reviewsCount urgencyAvailable activeStatus _id');
-      }
-      return obj;
-    }));
+  const obj = u.toObject();
+  if (u.role === 'provider') {
+    const profile = await ProviderProfile.findOne({ userId: u._id })
+      .select('profession zone plan verified profilePhoto ratingAverage reviewsCount urgencyAvailable activeStatus lastActiveAt createdAt _id');
+    
+    if (profile) {
+      // Calcular días de actividad
+      const now = new Date();
+      const lastActive = profile.lastActiveAt || profile.createdAt;
+      const daysSinceActive = Math.floor((now - new Date(lastActive)) / (1000 * 60 * 60 * 24));
+      const daysSinceCreated = Math.floor((now - new Date(profile.createdAt)) / (1000 * 60 * 60 * 24));
+
+      obj.profile = {
+        ...profile.toObject(),
+        daysSinceActive,   // días desde última actividad
+        daysSinceCreated,  // días desde que se registró
+        lastActiveLabel: profile.lastActiveAt
+          ? (daysSinceActive === 0 ? 'Hoy' : `Hace ${daysSinceActive} día${daysSinceActive === 1 ? '' : 's'}`)
+          : 'Sin actividad registrada',
+      };
+    }
+  }
+  return obj;
+}));
 
     res.json({ users: usersWithProfile, pagination: { total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)) } });
   } catch (err) {

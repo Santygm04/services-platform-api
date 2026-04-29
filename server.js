@@ -65,8 +65,17 @@ module.exports.onlineUsers = onlineUsers;
 server.listen(PORT, () => {
   console.log(`Servidor corriendo en puerto ${PORT} — modo ${process.env.NODE_ENV}`);
 
+  // ── Banners: expirar cada hora ────────────────────────
   setInterval(expireBanners, 1000 * 60 * 60);
   expireBanners();
+
+  // ── Prestadores: desactivar tras 30 días de inactividad ──
+  // Corre 1 vez al día a las 3am (o al arrancar el server)
+  const { deactivateInactiveProviders } = require('./src/jobs/inactivityJob');
+  deactivateInactiveProviders(); // ejecución inmediata al arrancar
+
+  const ONE_DAY = 1000 * 60 * 60 * 24;
+  setInterval(deactivateInactiveProviders, ONE_DAY);
 });
 
   

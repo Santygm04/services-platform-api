@@ -84,6 +84,11 @@ const providerProfileSchema = new mongoose.Schema(
       default: true,
     },
 
+    lastActiveAt: {
+    type: Date,
+    default: null,
+    },
+
     // ── Verificación ──────────────────────────────────────
     verified: {
       type: Boolean,
