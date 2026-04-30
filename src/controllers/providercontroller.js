@@ -396,14 +396,30 @@ const getNearbySeekersForMe = async (req, res) => {
   }
 };
 
+const getProfileByUserId = async (req, res) => {
+  try {
+    const profile = await ProviderProfile.findOne({ userId: req.params.userId })
+      .populate('userId', 'name emailVerified');
+    if (!profile) {
+      return res.status(404).json({ message: 'Perfil no encontrado' });
+    }
+    res.json({ profile: buildPublicProfile(profile, !!req.user) });
+  } catch (error) {
+    console.error('getProfileByUserId error:', error);
+    res.status(500).json({ message: 'Error interno del servidor' });
+  }
+};
+
 module.exports = {
   getMyProfile,
   updateMyProfile,
   getPublicProfile,
+  getProfileByUserId,
   trackView,
   getMyStats,
   getAllProviders,
   getNearbyActivity,
   getNearbySeekersForMe,
   toggleActiveStatus,
+  
 };

@@ -186,15 +186,17 @@ const registerSeeker = async (req, res) => {
     });
 
     // Email DESPUÉS de responder para no bloquear el request
-    sendVerificationEmail(email, name, emailToken)
-      .then(() => console.log('✅ Email enviado a', email))
+   sendVerificationEmail(normalizedEmail, name.trim(), emailToken)
+      .then(() => console.log('✅ Email enviado a', normalizedEmail))
       .catch(err => console.error('❌ Email falló:', err.message));
+
+    sendWelcomeEmail(normalizedEmail, name.trim(), 'provider')
+      .catch(err => console.error('❌ Welcome email falló:', err.message));
   } catch (err) {
-    console.error('registerSeeker error:', err);
+    console.error('registerProvider error:', err);
     res.status(500).json({ message: 'Error interno del servidor' });
   }
 };
-
 // POST /api/auth/register-provider
 // Soporta código de referido opcional (?ref=ZS-XXXXXX o body.referralCode)
 const registerProvider = async (req, res) => {

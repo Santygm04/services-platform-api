@@ -4,6 +4,7 @@ const {
   getMyProfile,
   updateMyProfile,
   getPublicProfile,
+  getProfileByUserId,
   trackView,
   getMyStats,
   getAllProviders,
@@ -32,5 +33,9 @@ router.get('/:id',                optionalAuth, getPublicProfile);
 router.post('/:id/view',          trackView);
 router.get('/:id/reviews',        getProviderReviews);
 router.get('/:id/nearby-seekers', getNearbyActivity);
+// ── Buscar perfil por userId (para mensajes) ──
+router.get('/by-user/:userId', optionalAuth, getProfileByUserId);
 
+// ── Rutas con :id — van DESPUÉS de /me ──
+router.get('/:id',                optionalAuth, getPublicProfile);
 module.exports = router;
