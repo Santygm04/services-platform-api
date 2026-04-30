@@ -26,9 +26,9 @@ const baseTemplate = (content) => `
         <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;">
           <tr>
             <td style="background:${BRAND.color};border-radius:16px 16px 0 0;padding:28px 32px;text-align:center;">
-              <span style="font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.5px;">
-                Zona<span style="color:${BRAND.accent}">Servicios</span>
-              </span>
+              <span style="font-size:24px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;text-shadow:0 1px 3px rgba(0,0,0,0.3);">
+              Zona<span style="color:#FFFFFF;background:rgba(255,255,255,0.25);padding:0 4px;border-radius:4px;">Servicios</span>
+            </span>
             </td>
           </tr>
           <tr>
