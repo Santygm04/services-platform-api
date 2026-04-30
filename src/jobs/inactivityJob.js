@@ -1,7 +1,7 @@
 const User = require('../models/User');
 const ProviderProfile = require('../models/ProviderProfile');
 
-const THIRTY_DAYS = 1 * 24 * 60 * 60 * 1000;
+const THIRTY_DAYS = 1 * 60 * 1000;
 
 const deactivateInactiveProviders = async () => {
   try {
