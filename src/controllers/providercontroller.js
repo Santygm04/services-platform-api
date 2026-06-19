@@ -421,5 +421,4 @@ module.exports = {
   getNearbyActivity,
   getNearbySeekersForMe,
   toggleActiveStatus,
-  
 };

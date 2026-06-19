@@ -40,10 +40,18 @@ io.on('connection', (socket) => {
 
   socket.on('join', (userId) => {
   console.log('📥 BACK: join recibido de:', userId);
-  socket.join(userId.toString()); // 🔥 CLAVE
-    console.log('🏠 BACK: usuario unido a room:', userId);
-  onlineUsers.set(userId.toString(), socket.id);
-  console.log('Usuario conectado:', userId);
+  
+  // 🔥 FIX: Validar que userId exista
+  if (!userId) {
+    console.warn('⚠️ join recibido sin userId, ignorando');
+    return;
+  }
+  
+  const userIdStr = userId.toString();
+  socket.join(userIdStr);
+  console.log('🏠 BACK: usuario unido a room:', userIdStr);
+  onlineUsers.set(userIdStr, socket.id);
+  console.log('✅ Usuario conectado:', userIdStr);
 });
 
   socket.on('disconnect', () => {
