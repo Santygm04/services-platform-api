@@ -10,7 +10,7 @@ const BRAND = {
 };
 const LOGO_URL = `${BRAND.url}/logo-navbar.png`;
 
-const FROM = 'ZonaServicios <onboarding@resend.dev>';
+const FROM = 'ZonaServicios <no-reply@zonaservicios.com.ar>';
 
 // ── Template base ─────────────────────────────────────────
 const baseTemplate = (content) => `
