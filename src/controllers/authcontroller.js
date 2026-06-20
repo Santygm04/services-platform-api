@@ -52,7 +52,7 @@ const buildUserResponse = async (user) => {
   let profilePhoto = null;
   let plan         = null;
 
-  if (user.role === 'provider') {
+  if (user.role === 'provider' || user.role === 'both') {
     const profile  = await ProviderProfile.findOne({ userId: user._id }).select('profilePhoto plan');
     profilePhoto   = profile?.profilePhoto || null;
     plan           = profile?.plan || 'free';
@@ -68,6 +68,7 @@ const buildUserResponse = async (user) => {
     email:         user.email,
     role:          user.role,
     emailVerified: user.emailVerified,
+    googleId:      user.googleId || null,
     status:        user.status,
     profilePhoto,
     plan:          plan || null,
@@ -162,20 +163,16 @@ const registerSeeker = async (req, res) => {
     if (!name || !email || !password)
       return res.status(400).json({ message: 'Todos los campos son obligatorios' });
 
-    const existing = await User.findOne({ email });
+    const normalizedEmail = email.trim().toLowerCase();
+    const existing = await User.findOne({ email: normalizedEmail });
     if (existing) return res.status(400).json({ message: 'Ya existe una cuenta con ese email' });
 
     const emailToken = generateEmailToken();
-    const user       = await User.create({ name, email, password, role: 'seeker', emailVerificationToken: emailToken });
+    const user       = await User.create({ name: name.trim(), email: normalizedEmail, password, role: 'seeker', emailVerificationToken: emailToken });
     await SeekerProfile.create({ userId: user._id, zone: zone?.trim() || '' });
 
-      console.log('=== INTENTO DE EMAIL (seeker) ===');
-      console.log('EMAIL_USER:', process.env.EMAIL_USER);
-      console.log('EMAIL_PASS existe:', !!process.env.EMAIL_PASS);
-      console.log('Destinatario:', email);
-
     if (zone?.trim()) {
-      notifyProvidersInZone(name, zone.trim()).catch(() => {});
+      notifyProvidersInZone(name.trim(), zone.trim()).catch(() => {});
     }
 
     const token = generateToken(user._id);
@@ -185,15 +182,14 @@ const registerSeeker = async (req, res) => {
       user: { id: user._id, name: user.name, email: user.email, role: user.role, emailVerified: user.emailVerified },
     });
 
-    // Email DESPUÉS de responder para no bloquear el request
-   sendVerificationEmail(normalizedEmail, name.trim(), emailToken)
+    sendVerificationEmail(normalizedEmail, name.trim(), emailToken)
       .then(() => console.log('✅ Email enviado a', normalizedEmail))
       .catch(err => console.error('❌ Email falló:', err.message));
 
-    sendWelcomeEmail(normalizedEmail, name.trim(), 'provider')
+    sendWelcomeEmail(normalizedEmail, name.trim(), 'seeker')
       .catch(err => console.error('❌ Welcome email falló:', err.message));
   } catch (err) {
-    console.error('registerProvider error:', err);
+    console.error('registerSeeker error:', err);
     res.status(500).json({ message: 'Error interno del servidor' });
   }
 };
@@ -395,18 +391,33 @@ const googleCallback = async (req, res) => {
         await SeekerProfile.create({ userId: user._id });
       }
 
-      // Email de bienvenida
+      // Email de bienvenida (Google ya verificó el email, no hace falta sendVerificationEmail)
       sendWelcomeEmail(user.email, user.name, role).catch(() => {});
 
     } else {
       // Usuario existente — actualizar googleId si no tenía
       if (!user.googleId) {
-        user.googleId     = googleUser.sub;
+        user.googleId      = googleUser.sub;
         user.emailVerified = true;
         await user.save();
       }
       if (user.status === 'blocked') {
         return res.redirect(`${process.env.FRONTEND_URL}/login?error=blocked`);
+      }
+
+      // Multi-role: si el rol pedido es distinto al que tiene, crear el perfil faltante
+      const currentRole = user.role;
+      if (currentRole !== 'admin' && currentRole !== 'both' && currentRole !== role) {
+        // Crear el perfil del rol nuevo si no existe
+        if (role === 'provider') {
+          const exists = await ProviderProfile.findOne({ userId: user._id });
+          if (!exists) await ProviderProfile.create({ userId: user._id });
+        } else if (role === 'seeker') {
+          const exists = await SeekerProfile.findOne({ userId: user._id });
+          if (!exists) await SeekerProfile.create({ userId: user._id });
+        }
+        user.role = 'both';
+        await user.save();
       }
     }
 
@@ -414,8 +425,9 @@ const googleCallback = async (req, res) => {
     const token = generateToken(user._id);
 
     // Redirigir con token en query (el frontend lo guarda en localStorage)
+    const effectiveRole = user.role === 'both' ? role : user.role;
     res.redirect(
-      `${process.env.FRONTEND_URL}/auth/google-success?token=${token}&role=${user.role}`
+      `${process.env.FRONTEND_URL}/auth/google-success?token=${token}&role=${effectiveRole}`
     );
   } catch (err) {
     console.error('googleCallback error:', err);

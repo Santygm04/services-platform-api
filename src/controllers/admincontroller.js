@@ -36,8 +36,8 @@ const getMetrics = async (req, res) => {
       plusProviders, verifiedProviders, blockedUsers, inactiveUsers,
     ] = await Promise.all([
       User.countDocuments(periodFilter),
-      User.countDocuments({ role: 'provider', ...periodFilter }),
-      User.countDocuments({ role: 'seeker', ...periodFilter }),
+      User.countDocuments({ role: { $in: ['provider', 'both'] }, ...periodFilter }),
+      User.countDocuments({ role: { $in: ['seeker', 'both'] }, ...periodFilter }),
       Review.countDocuments({ hidden: false, ...periodFilter }),
       ProviderProfile.countDocuments({ plan: { $in: ['plus', 'premium'] } }),
       ProviderProfile.countDocuments({ verified: true }),
@@ -215,9 +215,9 @@ const getFeaturedProviders = async (req, res) => {
   try {
     const providers = await ProviderProfile.find()
       .populate('userId', 'name email status')
-      .select('profession zone plan verified urgencyAvailable ratingAverage reviewsCount profilePhoto userId activeStatus')
-      .sort({ ratingAverage: -1, plan: -1 })
-      .limit(30);
+      .select('profession zone plan verified urgencyAvailable ratingAverage reviewsCount profilePhoto userId activeStatus createdAt')
+      .sort({ createdAt: -1 })
+      .limit(300);
     res.json({ providers });
   } catch (err) {
     res.status(500).json({ message: 'Error interno' });
@@ -240,9 +240,13 @@ const toggleUrgency = async (req, res) => {
 // ── GET /api/admin/users ─────────────────────────────────
 const getUsers = async (req, res) => {
   try {
-    const { role, status, search, page = 1, limit = 20 } = req.query;
+    const { role, status, search, page = 1, limit = 25 } = req.query;
     const filter = {};
-    if (role)   filter.role = role;
+    if (role) {
+      if (role === 'provider') filter.role = { $in: ['provider', 'both'] };
+      else if (role === 'seeker') filter.role = { $in: ['seeker', 'both'] };
+      else filter.role = role;
+    }
     if (status) filter.status = status;
     if (search) filter.$or = [
       { name: { $regex: search, $options: 'i' } },
@@ -328,7 +332,11 @@ const exportUsers = async (req, res) => {
   try {
     const { role, status } = req.query;
     const filter = {};
-    if (role)   filter.role = role;
+    if (role) {
+      if (role === 'provider') filter.role = { $in: ['provider', 'both'] };
+      else if (role === 'seeker') filter.role = { $in: ['seeker', 'both'] };
+      else filter.role = role;
+    }
     if (status) filter.status = status;
 
     const users = await User.find(filter).select('-password -emailVerificationToken -passwordResetToken').sort({ createdAt: -1 });
@@ -423,10 +431,11 @@ const deleteUser = async (req, res) => {
     if (!user) return res.status(404).json({ message: 'No encontrado' });
     if (user.role === 'admin') return res.status(400).json({ message: 'No podés eliminar un admin' });
 
-    if (user.role === 'provider') {
+    if (user.role === 'provider' || user.role === 'both') {
       await ProviderProfile.deleteOne({ userId: user._id });
       await Verification.deleteOne({ userId: user._id });
-    } else if (user.role === 'seeker') {
+    }
+    if (user.role === 'seeker' || user.role === 'both') {
       await SeekerProfile.deleteOne({ userId: user._id });
     }
 

@@ -38,9 +38,11 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Permite requests sin origin (Postman, mobile apps, etc)
+    // Permite requests sin origin (Postman, mobile apps, webviews de Instagram/Facebook)
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
+    // Permite webviews de redes sociales (Instagram, Facebook, etc.)
+    if (/instagram\.com|facebook\.com|fbcdn\.net/i.test(origin)) return callback(null, true);
     callback(new Error(`CORS bloqueado para origen: ${origin}`));
   },
   credentials: true,
