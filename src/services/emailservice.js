@@ -3,10 +3,12 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 const BRAND = {
   name:   'ZonaServicios',
-  color:  '#16A34A',
-  accent: '#22C55E',
+  color:  '#1E2B58',
+  accent: '#edb449',
+  teal:   '#6e70c4',
   url:    process.env.FRONTEND_URL || 'http://localhost:5173',
 };
+const LOGO_URL = `${BRAND.url}/logo-navbar.png`;
 
 const FROM = 'ZonaServicios <onboarding@resend.dev>';
 
@@ -26,9 +28,7 @@ const baseTemplate = (content) => `
         <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;">
           <tr>
             <td style="background:${BRAND.color};border-radius:16px 16px 0 0;padding:28px 32px;text-align:center;">
-              <span style="font-size:24px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;text-shadow:0 1px 3px rgba(0,0,0,0.3);">
-              Zona<span style="color:#16A34A;background:#FFFFFF;padding:0 4px;border-radius:4px;">Servicios</span>
-            </span>
+              <img src="${LOGO_URL}" alt="${BRAND.name}" width="160" style="display:inline-block;height:auto;max-width:160px;" />
             </td>
           </tr>
           <tr>
@@ -48,7 +48,7 @@ const baseTemplate = (content) => `
 </html>
 `;
 
-const btnStyle = (color = BRAND.color) =>
+const btnStyle = (color = BRAND.teal) =>
   `display:inline-block;background:${color};color:#fff;text-decoration:none;padding:14px 28px;border-radius:10px;font-weight:600;font-size:15px;margin:20px 0;`;
 
 const formatDate = (date) => {
@@ -157,7 +157,7 @@ const sendPasswordResetEmail = async (to, name, token) => {
       Hola <strong>${name}</strong>, recibimos una solicitud para restablecer tu contraseña. Hacé clic en el botón de abajo:
     </p>
     <div style="text-align:center;">
-      <a href="${url}" style="${btnStyle('#EF4444')}">Restablecer contraseña</a>
+      <a href="${url}" style="${btnStyle()}">Restablecer contraseña</a>
     </div>
     <p style="color:#94A3B8;font-size:13px;text-align:center;margin:0;">
       Este enlace expira en 1 hora. Si no solicitaste esto, ignorá este email.
