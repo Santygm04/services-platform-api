@@ -165,7 +165,21 @@ const registerSeeker = async (req, res) => {
 
     const normalizedEmail = email.trim().toLowerCase();
     const existing = await User.findOne({ email: normalizedEmail });
-    if (existing) return res.status(400).json({ message: 'Ya existe una cuenta con ese email' });
+if (existing) {
+  if (existing.role === 'provider') {
+    const seekerExists = await SeekerProfile.findOne({ userId: existing._id });
+    if (!seekerExists) await SeekerProfile.create({ userId: existing._id, zone: zone?.trim() || '' });
+    existing.role = 'both';
+    await existing.save();
+    const token = generateToken(existing._id);
+    return res.status(200).json({
+      message: 'Perfil de buscador agregado a tu cuenta.',
+      token,
+      user: { id: existing._id, name: existing.name, email: existing.email, role: 'both', emailVerified: existing.emailVerified },
+    });
+  }
+  return res.status(400).json({ message: 'Ya existe una cuenta con ese email' });
+}
 
     const emailToken = generateEmailToken();
     const user       = await User.create({ name: name.trim(), email: normalizedEmail, password, role: 'seeker', emailVerificationToken: emailToken });
@@ -203,8 +217,32 @@ const registerProvider = async (req, res) => {
       return res.status(400).json({ message: 'Todos los campos son obligatorios' });
 
     const normalizedEmail = email.trim().toLowerCase();
-    const existing        = await User.findOne({ email: normalizedEmail });
-    if (existing) return res.status(409).json({ message: 'Ya existe una cuenta con ese email' });
+    const existing = await User.findOne({ email: normalizedEmail });
+if (existing) {
+  if (existing.role === 'seeker') {
+    const providerExists = await ProviderProfile.findOne({ userId: existing._id });
+    if (!providerExists) {
+      let referredByUserId = null;
+      if (referralCode?.trim()) {
+        const referrerProfile = await ProviderProfile.findOne({ referralCode: referralCode.trim() });
+        if (referrerProfile) {
+          referredByUserId = referrerProfile.userId;
+          await ProviderProfile.findByIdAndUpdate(referrerProfile._id, { $inc: { referralCredits: 500 } });
+        }
+      }
+      await ProviderProfile.create({ userId: existing._id, referredBy: referredByUserId });
+    }
+    existing.role = 'both';
+    await existing.save();
+    const token = generateToken(existing._id);
+    return res.status(200).json({
+      message: 'Perfil de prestador agregado a tu cuenta.',
+      token,
+      user: { id: existing._id, name: existing.name, email: existing.email, role: 'both', emailVerified: existing.emailVerified },
+    });
+  }
+  return res.status(409).json({ message: 'Ya existe una cuenta con ese email' });
+}
 
     const emailToken = generateEmailToken();
     const user       = await User.create({
