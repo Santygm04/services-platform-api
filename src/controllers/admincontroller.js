@@ -296,32 +296,37 @@ const getUserDetail = async (req, res) => {
     const user = await User.findById(req.params.id).select('-password -emailVerificationToken -passwordResetToken');
     if (!user) return res.status(404).json({ message: 'No encontrado' });
     let profile = null;
-if (user.role === 'provider') {
-  const rawProfile = await ProviderProfile.findOne({ userId: user._id });
-  if (rawProfile) {
-    const now = new Date();
-    const lastActive = rawProfile.lastActiveAt || rawProfile.createdAt;
-    const daysSinceActive = Math.floor((now - new Date(lastActive)) / (1000 * 60 * 60 * 24));
-    const daysSinceCreated = Math.floor((now - new Date(rawProfile.createdAt)) / (1000 * 60 * 60 * 24));
-    profile = {
-      ...rawProfile.toObject(),
-      daysSinceActive,
-      daysSinceCreated,
-      lastActiveLabel: rawProfile.lastActiveAt
-        ? (daysSinceActive === 0 ? 'Hoy' : `Hace ${daysSinceActive} día${daysSinceActive === 1 ? '' : 's'}`)
-        : 'Sin actividad registrada',
-    };
-  }
-}
-    else if (user.role === 'seeker') profile = await SeekerProfile.findOne({ userId: user._id });
+    let seekerProfile = null;
+
+    if (user.role === 'provider' || user.role === 'both') {
+      const rawProfile = await ProviderProfile.findOne({ userId: user._id }).lean();
+      console.log('DEBUG getUserDetail - userId:', user._id, '- rawProfile:', rawProfile?._id || 'NULL');
+      if (rawProfile) {
+        const now = new Date();
+        const lastActive = rawProfile.lastActiveAt || rawProfile.createdAt;
+        const daysSinceActive = Math.floor((now - new Date(lastActive)) / (1000 * 60 * 60 * 24));
+        const daysSinceCreated = Math.floor((now - new Date(rawProfile.createdAt)) / (1000 * 60 * 60 * 24));
+        profile = {
+          ...rawProfile.toObject(),
+          daysSinceActive,
+          daysSinceCreated,
+          lastActiveLabel: rawProfile.lastActiveAt
+            ? (daysSinceActive === 0 ? 'Hoy' : `Hace ${daysSinceActive} día${daysSinceActive === 1 ? '' : 's'}`)
+            : 'Sin actividad registrada',
+        };
+      }
+    }
+    if (user.role === 'seeker' || user.role === 'both') {
+      seekerProfile = await SeekerProfile.findOne({ userId: user._id });
+    }
 
     let reviews = [];
-    if (profile && user.role === 'provider') {
+    if (profile && (user.role === 'provider' || user.role === 'both')) {
       reviews = await Review.find({ providerId: profile._id, hidden: false })
         .populate('reviewerId', 'name').sort({ createdAt: -1 }).limit(5);
     }
 
-    res.json({ user, profile, reviews });
+    res.json({ user, profile, seekerProfile, reviews });
   } catch (err) {
     res.status(500).json({ message: 'Error interno' });
   }
