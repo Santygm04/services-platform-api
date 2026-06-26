@@ -307,7 +307,7 @@ const getUserDetail = async (req, res) => {
         const daysSinceActive = Math.floor((now - new Date(lastActive)) / (1000 * 60 * 60 * 24));
         const daysSinceCreated = Math.floor((now - new Date(rawProfile.createdAt)) / (1000 * 60 * 60 * 24));
         profile = {
-          ...rawProfile.toObject(),
+          ...rawProfile,
           daysSinceActive,
           daysSinceCreated,
           lastActiveLabel: rawProfile.lastActiveAt
