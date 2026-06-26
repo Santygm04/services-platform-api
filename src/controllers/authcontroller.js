@@ -61,6 +61,10 @@ const buildUserResponse = async (user) => {
     const seekerP  = await SeekerProfile.findOne({ userId: user._id }).select('profilePhoto');
     profilePhoto   = seekerP?.profilePhoto || null;
   }
+  if (user.role === 'both' && !profilePhoto) {
+    const seekerP  = await SeekerProfile.findOne({ userId: user._id }).select('profilePhoto');
+    profilePhoto   = seekerP?.profilePhoto || null;
+  }
 
   return {
     id:            user._id,
