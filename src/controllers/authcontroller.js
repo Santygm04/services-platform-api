@@ -241,7 +241,7 @@ if (existing) {
       user: { id: existing._id, name: existing.name, email: existing.email, role: 'both', emailVerified: existing.emailVerified },
     });
   }
-  return res.status(409).json({ message: 'Ya existe una cuenta con ese email' });
+  return res.status(409).json({ message: 'Ya existe una cuenta con ese email.' });
 }
 
     const emailToken = generateEmailToken();
