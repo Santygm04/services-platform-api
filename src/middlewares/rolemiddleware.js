@@ -1,7 +1,11 @@
 // Uso: authorizeRoles('admin') o authorizeRoles('provider', 'admin')
 const authorizeRoles = (...roles) => {
   return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
+    const userRole = req.user.role;
+    const hasAccess =
+      roles.includes(userRole) ||
+      (userRole === 'both' && roles.some(r => ['provider', 'seeker'].includes(r)));
+    if (!hasAccess) {
       return res.status(403).json({
         message: `Acceso denegado. Se requiere rol: ${roles.join(' o ')}.`,
       });
