@@ -71,6 +71,7 @@ const buildUserResponse = async (user) => {
     name:          user.name,
     email:         user.email,
     role:          user.role,
+    activeRole:    user.activeRole || null,
     emailVerified: user.emailVerified,
     googleId:      user.googleId || null,
     status:        user.status,
@@ -704,6 +705,27 @@ const changePassword = async (req, res) => {
   }
 };
 
+// PATCH /api/auth/active-role
+const setActiveRole = async (req, res) => {
+  try {
+    const { activeRole } = req.body;
+    if (!['provider', 'seeker'].includes(activeRole)) {
+      return res.status(400).json({ message: 'Rol inválido' });
+    }
+    const user = await User.findById(req.user.id);
+    if (!user || user.role !== 'both') {
+      return res.status(400).json({ message: 'Solo usuarios con ambos roles pueden hacer esto' });
+    }
+    user.activeRole = activeRole;
+    await user.save();
+    const userData = await buildUserResponse(user);
+    res.json({ user: userData });
+  } catch (err) {
+    console.error('setActiveRole error:', err);
+    res.status(500).json({ message: 'Error interno' });
+  }
+};
+
 module.exports = {
   // Admin
   adminCheck,
@@ -726,4 +748,5 @@ module.exports = {
   // Plan
   upgradePlan,
   adminUpgradePlan,
+  setActiveRole,
 };

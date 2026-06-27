@@ -57,7 +57,12 @@ const userSchema = new mongoose.Schema(
     googleId: {
       type: String,
       default: null,
-      sparse: true, // permite múltiples nulls en el índice unique
+      sparse: true,
+    },
+    activeRole: {
+      type: String,
+      enum: ['provider', 'seeker', null],
+      default: null,
     },
   },
   { timestamps: true }

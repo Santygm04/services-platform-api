@@ -3,6 +3,7 @@ const router  = express.Router();
 const {
   // Admin
   adminCheck,
+  setActiveRole,
   adminSetup,
   registerAdmin,
   // Registro
@@ -44,6 +45,7 @@ router.post('/resend-verification', protect, resendVerification);
 router.post('/forgot-password',     forgotPassword);
 router.post('/reset-password',      resetPassword);
 router.patch('/change-password',    protect, changePassword);
+router.patch('/active-role',        protect, setActiveRole);
 
 // ── Google OAuth ──────────────────────────────────────────
 // 1. Frontend redirige a: GET /api/auth/google?role=provider|seeker&ref=CODIGO
