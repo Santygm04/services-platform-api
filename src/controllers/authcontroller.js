@@ -468,9 +468,8 @@ const googleCallback = async (req, res) => {
     const token = generateToken(user._id);
 
     // Redirigir con token en query (el frontend lo guarda en localStorage)
-    const effectiveRole = user.role === 'both' ? role : user.role;
     res.redirect(
-      `${process.env.FRONTEND_URL}/auth/google-success?token=${token}&role=${effectiveRole}`
+      `${process.env.FRONTEND_URL}/auth/google-success?token=${token}&role=${user.role}`
     );
   } catch (err) {
     console.error('googleCallback error:', err);
