@@ -461,6 +461,7 @@ const googleCallback = async (req, res) => {
         }
         user.role = 'both';
         await user.save();
+        sendWelcomeEmail(user.email, user.name, role).catch(() => {});
       }
     }
 
@@ -609,7 +610,8 @@ const verifyEmail = async (req, res) => {
     user.emailVerificationToken = null;
     await user.save();
 
-    sendWelcomeEmail(user.email, user.name, user.role).catch(err => console.error('sendWelcomeEmail error:', err));
+    const welcomeRole = user.role === 'both' ? 'seeker' : user.role;
+    sendWelcomeEmail(user.email, user.name, welcomeRole).catch(err => console.error('sendWelcomeEmail error:', err));
     res.json({ message: 'Email verificado correctamente' });
   } catch (err) {
     console.error('verifyEmail error:', err);
