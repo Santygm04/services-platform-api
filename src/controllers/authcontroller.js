@@ -183,6 +183,7 @@ if (existing) {
     sendVerificationEmail(existing.email, existing.name, emailToken).catch(() => {});
     return res.status(200).json({
       message: 'Perfil de buscador agregado. Revisá tu email para verificar tu cuenta.',
+      newRole: 'seeker',
       token,
       user: { id: existing._id, name: existing.name, email: existing.email, role: 'both', emailVerified: false },
     });
@@ -250,6 +251,7 @@ if (existing) {
     sendVerificationEmail(existing.email, existing.name, emailToken).catch(() => {});
     return res.status(200).json({
       message: 'Perfil de prestador agregado. Revisá tu email para verificar tu cuenta.',
+      newRole: 'provider',
       token,
       user: { id: existing._id, name: existing.name, email: existing.email, role: 'both', emailVerified: false },
     });
