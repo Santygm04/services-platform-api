@@ -89,7 +89,7 @@ const sendWelcomeEmail = async (to, name, role) => {
         : 'Tu cuenta ya está activa. Empezá a buscar el servicio que necesitás.'}
     </p>
     <div style="text-align:center;">
-      <a href="${BRAND.url}/${isProvider ? 'dashboard' : 'search'}" style="${btnStyle()}">
+      <a href="${BRAND.url}${isProvider ? '/dashboard' : ''}" style="${btnStyle()}">
         ${isProvider ? 'Completar mi perfil' : 'Buscar servicios'}
       </a>
     </div>
