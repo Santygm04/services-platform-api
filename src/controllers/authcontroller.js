@@ -204,6 +204,7 @@ if (existing) {
     sendVerificationEmail(normalizedEmail, name.trim(), emailToken)
       .then(() => console.log('✅ Email enviado a', normalizedEmail))
       .catch(err => console.error('❌ Email falló:', err.message));
+    // welcome se manda solo después de verificar el email
 
     sendWelcomeEmail(normalizedEmail, name.trim(), 'seeker')
       .catch(err => console.error('❌ Welcome email falló:', err.message));
@@ -610,8 +611,7 @@ const verifyEmail = async (req, res) => {
     user.emailVerificationToken = null;
     await user.save();
 
-    const welcomeRole = user.role === 'both' ? 'seeker' : user.role;
-    sendWelcomeEmail(user.email, user.name, welcomeRole).catch(err => console.error('sendWelcomeEmail error:', err));
+    sendWelcomeEmail(user.email, user.name, user.role).catch(err => console.error('sendWelcomeEmail error:', err));
     res.json({ message: 'Email verificado correctamente' });
   } catch (err) {
     console.error('verifyEmail error:', err);
