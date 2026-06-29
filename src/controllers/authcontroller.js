@@ -206,8 +206,7 @@ if (existing) {
       .catch(err => console.error('❌ Email falló:', err.message));
     // welcome se manda solo después de verificar el email
 
-    sendWelcomeEmail(normalizedEmail, name.trim(), 'seeker')
-      .catch(err => console.error('❌ Welcome email falló:', err.message));
+     
   } catch (err) {
     console.error('registerSeeker error:', err);
     res.status(500).json({ message: 'Error interno del servidor' });
@@ -276,11 +275,6 @@ if (existing) {
       userId:      user._id,
       referredBy:  referredByUserId,
     });
-
-      console.log('=== INTENTO DE EMAIL ===');
-      console.log('EMAIL_USER:', process.env.EMAIL_USER);
-      console.log('EMAIL_PASS existe:', !!process.env.EMAIL_PASS);
-      console.log('Destinatario:', normalizedEmail);
 
     const token = generateToken(user._id);
     res.status(201).json({
