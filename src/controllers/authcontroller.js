@@ -175,12 +175,16 @@ if (existing) {
     const seekerExists = await SeekerProfile.findOne({ userId: existing._id });
     if (!seekerExists) await SeekerProfile.create({ userId: existing._id, zone: zone?.trim() || '' });
     existing.role = 'both';
+    existing.emailVerified = false;
+    const emailToken = generateEmailToken();
+    existing.emailVerificationToken = emailToken;
     await existing.save();
     const token = generateToken(existing._id);
+    sendVerificationEmail(existing.email, existing.name, emailToken).catch(() => {});
     return res.status(200).json({
-      message: 'Perfil de buscador agregado a tu cuenta.',
+      message: 'Perfil de buscador agregado. Revisá tu email para verificar tu cuenta.',
       token,
-      user: { id: existing._id, name: existing.name, email: existing.email, role: 'both', emailVerified: existing.emailVerified },
+      user: { id: existing._id, name: existing.name, email: existing.email, role: 'both', emailVerified: false },
     });
   }
   return res.status(400).json({ message: 'Ya existe una cuenta con ese email' });
@@ -238,12 +242,16 @@ if (existing) {
       await ProviderProfile.create({ userId: existing._id, referredBy: referredByUserId });
     }
     existing.role = 'both';
+    existing.emailVerified = false;
+    const emailToken = generateEmailToken();
+    existing.emailVerificationToken = emailToken;
     await existing.save();
     const token = generateToken(existing._id);
+    sendVerificationEmail(existing.email, existing.name, emailToken).catch(() => {});
     return res.status(200).json({
-      message: 'Perfil de prestador agregado a tu cuenta.',
+      message: 'Perfil de prestador agregado. Revisá tu email para verificar tu cuenta.',
       token,
-      user: { id: existing._id, name: existing.name, email: existing.email, role: 'both', emailVerified: existing.emailVerified },
+      user: { id: existing._id, name: existing.name, email: existing.email, role: 'both', emailVerified: false },
     });
   }
   return res.status(409).json({ message: 'Ya existe una cuenta con ese email.' });
