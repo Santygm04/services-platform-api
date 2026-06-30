@@ -180,12 +180,21 @@ const getUrgent = async (req, res) => {
 
 // ── GET /api/search/by-slug/:slug ────────────────────────
 // Para URLs semánticas: /electricista-belgrano-abc123
+const mongoose = require('mongoose');
+
 const getBySlug = async (req, res) => {
   try {
     const { slug } = req.params;
-    const profile = await ProviderProfile.findOne({ slug })
+    let profile = await ProviderProfile.findOne({ slug })
       .populate('userId', 'name emailVerified')
       .populate('category', 'name slug');
+
+    // Fallback: si no es un slug válido, puede ser un _id (perfil sin slug generado)
+    if (!profile && mongoose.Types.ObjectId.isValid(slug)) {
+      profile = await ProviderProfile.findById(slug)
+        .populate('userId', 'name emailVerified')
+        .populate('category', 'name slug');
+    }
 
     if (!profile) {
       return res.status(404).json({ message: 'Perfil no encontrado' });
