@@ -80,7 +80,7 @@ const sendVerificationEmail = async (to, name, token) => {
 };
 
 const sendWelcomeEmail = async (to, name, role) => {
-  const isProvider = role === 'provider' || role === 'both';
+  const isProvider = role === 'provider';
   const html = baseTemplate(`
     <h2 style="color:#0B1F3A;font-size:22px;margin:0 0 8px;">¡Bienvenido/a a ZonaServicios, ${name}! 🎉</h2>
     <p style="color:#475569;font-size:15px;line-height:1.6;margin:0 0 16px;">
