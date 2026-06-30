@@ -176,6 +176,7 @@ if (existing) {
     if (!seekerExists) await SeekerProfile.create({ userId: existing._id, zone: zone?.trim() || '' });
     existing.role = 'both';
     existing.emailVerified = false;
+    existing.pendingRoleVerification = 'provider';
     const emailToken = generateEmailToken();
     existing.emailVerificationToken = emailToken;
     await existing.save();
@@ -244,6 +245,7 @@ if (existing) {
     }
     existing.role = 'both';
     existing.emailVerified = false;
+    existing.pendingRoleVerification = 'seeker';
     const emailToken = generateEmailToken();
     existing.emailVerificationToken = emailToken;
     await existing.save();
@@ -613,9 +615,11 @@ const verifyEmail = async (req, res) => {
 
     user.emailVerified         = true;
     user.emailVerificationToken = null;
+    const roleForEmail = user.pendingRoleVerification || user.role;
+    user.pendingRoleVerification = null;
     await user.save();
 
-    sendWelcomeEmail(user.email, user.name, user.role).catch(err => console.error('sendWelcomeEmail error:', err));
+    sendWelcomeEmail(user.email, user.name, roleForEmail).catch(err => console.error('sendWelcomeEmail error:', err));
     res.json({ message: 'Email verificado correctamente' });
   } catch (err) {
     console.error('verifyEmail error:', err);

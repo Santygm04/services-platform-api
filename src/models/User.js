@@ -64,6 +64,11 @@ const userSchema = new mongoose.Schema(
       enum: ['provider', 'seeker', null],
       default: null,
     },
+    pendingRoleVerification: {
+      type: String,
+      enum: ['provider', 'seeker', null],
+      default: null,
+    },
   },
   { timestamps: true }
 );
