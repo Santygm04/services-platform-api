@@ -100,7 +100,7 @@ router.post('/portfolio', protect_provider, uploadMemory.single('image'), async 
 
     const profile = await ProviderProfile.findOne({ userId: req.user._id });
     if (!profile) return res.status(404).json({ message: 'Perfil no encontrado' });
-    if (profile.plan !== 'plus') return res.status(403).json({ message: 'Solo disponible en Plan Plus' });
+    if (profile.plan !== 'plus' && profile.plan !== 'premium') return res.status(403).json({ message: 'Solo disponible en Plan Plus o Premium' });
 
     const publicId = `portfolio_${req.user._id}_${Date.now()}`;
     const result = await uploadToCloudinary(req.file.buffer, 'zonaservicios/portfolio', publicId);
@@ -132,7 +132,7 @@ router.post('/portfolio-url', protect_provider, async (req, res) => {
 
     const profile = await ProviderProfile.findOne({ userId: req.user._id });
     if (!profile) return res.status(404).json({ message: 'Perfil no encontrado' });
-    if (profile.plan !== 'plus') return res.status(403).json({ message: 'Solo disponible en Plan Plus' });
+    if (profile.plan !== 'plus' && profile.plan !== 'premium') return res.status(403).json({ message: 'Solo disponible en Plan Plus o Premium' });
 
     profile.portfolio.push({
       imageUrl,
@@ -172,7 +172,7 @@ router.post('/links', protect_provider, async (req, res) => {
 
     const profile = await ProviderProfile.findOne({ userId: req.user._id });
     if (!profile) return res.status(404).json({ message: 'Perfil no encontrado' });
-    if (profile.plan !== 'plus') return res.status(403).json({ message: 'Solo disponible en Plan Plus' });
+    if (profile.plan !== 'plus' && profile.plan !== 'premium') return res.status(403).json({ message: 'Solo disponible en Plan Plus o Premium' });
 
     profile.links.push({ url, label: label || url });
     await profile.save();
