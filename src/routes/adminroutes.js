@@ -27,6 +27,7 @@ const {
   getAdminBanners, updateAdminBanner, deleteAdminBanner, createAdminBanner,
   deleteGhostProvider,
   createAdminLog, getAdminLogs, deleteAdminLog,
+  deleteSeekerRole, deleteProviderRole,
 } = require('../controllers/admincontroller');
 
 const {
@@ -53,6 +54,8 @@ router.patch('/users/:id/unblock',      unblockUser);
 router.patch('/users/:id/deactivate',   deactivateUser);
 router.patch('/users/:id/reactivate',   reactivateUser);
 router.delete('/users/:id',             deleteUser);
+router.delete('/users/:id/seeker',      deleteSeekerRole);
+router.delete('/users/:id/provider',    deleteProviderRole);
 router.patch('/users/:id/verify-email', verifyUserEmail);
 
 router.get('/providers/featured',       getFeaturedProviders);

@@ -704,6 +704,41 @@ const getAdminLogs = async (req, res) => {
   }
 };
 
+// ── DELETE solo cuenta seeker de un usuario 'both' ───────
+const deleteSeekerRole = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'No encontrado' });
+    if (user.role !== 'both') return res.status(400).json({ message: 'El usuario no tiene rol "both"' });
+
+    await SeekerProfile.deleteOne({ userId: user._id });
+    user.role = 'provider';
+    await user.save();
+    res.json({ message: 'Cuenta de buscador eliminada. El usuario ahora es solo prestador.', user });
+  } catch (err) {
+    console.error('deleteSeekerRole:', err);
+    res.status(500).json({ message: 'Error interno' });
+  }
+};
+
+// ── DELETE solo cuenta provider de un usuario 'both' ─────
+const deleteProviderRole = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'No encontrado' });
+    if (user.role !== 'both') return res.status(400).json({ message: 'El usuario no tiene rol "both"' });
+
+    await ProviderProfile.deleteOne({ userId: user._id });
+    await Verification.deleteOne({ userId: user._id });
+    user.role = 'seeker';
+    await user.save();
+    res.json({ message: 'Cuenta de prestador eliminada. El usuario ahora es solo buscador.', user });
+  } catch (err) {
+    console.error('deleteProviderRole:', err);
+    res.status(500).json({ message: 'Error interno' });
+  }
+};
+
 module.exports = {
   getMetrics, getActivity, getLiveSnapshot,
   getFeaturedProviders, toggleUrgency,
@@ -715,4 +750,5 @@ module.exports = {
   getAdminBanners, updateAdminBanner, deleteAdminBanner, createAdminBanner,
   deleteGhostProvider,
   createAdminLog, getAdminLogs, deleteAdminLog,
+  deleteSeekerRole, deleteProviderRole,
 };
