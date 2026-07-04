@@ -93,6 +93,11 @@ router.patch('/photo-url', protect_provider, async (req, res) => {
   }
 });
 
+// ── Límite de fotos de portfolio según plan ────────────────
+// Free: 3 fotos · Plus: 20 fotos · Premium: sin límite
+const PORTFOLIO_LIMITS = { free: 3, plus: 20, premium: Infinity };
+const getPortfolioLimit = (plan) => PORTFOLIO_LIMITS[plan] ?? PORTFOLIO_LIMITS.free;
+
 // POST /api/upload/portfolio — agregar imagen al portfolio (archivo)
 router.post('/portfolio', protect_provider, uploadMemory.single('image'), async (req, res) => {
   try {
@@ -100,7 +105,18 @@ router.post('/portfolio', protect_provider, uploadMemory.single('image'), async 
 
     const profile = await ProviderProfile.findOne({ userId: req.user._id });
     if (!profile) return res.status(404).json({ message: 'Perfil no encontrado' });
-    if (profile.plan !== 'plus' && profile.plan !== 'premium') return res.status(403).json({ message: 'Solo disponible en Plan Plus o Premium' });
+
+    const limit = getPortfolioLimit(profile.plan);
+    if (profile.portfolio.length >= limit) {
+      return res.status(403).json({
+        message: profile.plan === 'free'
+          ? `Llegaste al límite de ${limit} fotos del plan gratuito. Mejorá tu plan para subir más.`
+          : `Llegaste al límite de ${limit} fotos de tu plan actual. Mejorá a Premium para fotos ilimitadas.`,
+        limitReached: true,
+        limit,
+        currentCount: profile.portfolio.length,
+      });
+    }
 
     const publicId = `portfolio_${req.user._id}_${Date.now()}`;
     const result = await uploadToCloudinary(req.file.buffer, 'zonaservicios/portfolio', publicId);
@@ -132,7 +148,18 @@ router.post('/portfolio-url', protect_provider, async (req, res) => {
 
     const profile = await ProviderProfile.findOne({ userId: req.user._id });
     if (!profile) return res.status(404).json({ message: 'Perfil no encontrado' });
-    if (profile.plan !== 'plus' && profile.plan !== 'premium') return res.status(403).json({ message: 'Solo disponible en Plan Plus o Premium' });
+
+    const limit = getPortfolioLimit(profile.plan);
+    if (profile.portfolio.length >= limit) {
+      return res.status(403).json({
+        message: profile.plan === 'free'
+          ? `Llegaste al límite de ${limit} fotos del plan gratuito. Mejorá tu plan para subir más.`
+          : `Llegaste al límite de ${limit} fotos de tu plan actual. Mejorá a Premium para fotos ilimitadas.`,
+        limitReached: true,
+        limit,
+        currentCount: profile.portfolio.length,
+      });
+    }
 
     profile.portfolio.push({
       imageUrl,
