@@ -74,6 +74,7 @@ const buildUserResponse = async (user) => {
     activeRole:    user.activeRole || null,
     emailVerified: user.emailVerified,
     googleId:      user.googleId || null,
+    facebookId:    user.facebookId || null,
     status:        user.status,
     profilePhoto,
     plan:          plan || null,
@@ -325,6 +326,9 @@ const login = async (req, res) => {
     if (user.googleId) {
       return res.status(401).json({ message: 'Esta cuenta fue creada con Google. Usá "Continuar con Google" para ingresar.' });
       }
+      if (user.facebookId) {
+        return res.status(401).json({ message: 'Esta cuenta fue creada con Facebook. Usá "Continuar con Facebook" para ingresar.' });
+      }
       return res.status(401).json({ message: 'Email o contraseña incorrectos' });
     }
 
@@ -482,6 +486,139 @@ const googleCallback = async (req, res) => {
   } catch (err) {
     console.error('googleCallback error:', err);
     res.redirect(`${process.env.FRONTEND_URL}/login?error=google_error`);
+  }
+};
+
+// ── Facebook OAuth ────────────────────────────────────────
+// GET /api/auth/facebook
+// Mismo patrón que googleAuth: construye la URL manualmente y redirige.
+const facebookAuth = (req, res) => {
+  const role = req.query.role || 'seeker';
+  const ref  = req.query.ref  || '';
+
+  const params = new URLSearchParams({
+    client_id:    process.env.FACEBOOK_APP_ID,
+    redirect_uri: process.env.FACEBOOK_CALLBACK_URL || `${process.env.BACKEND_URL}/api/auth/facebook/callback`,
+    state:        JSON.stringify({ role, ref }),
+    scope:        'email,public_profile',
+    response_type: 'code',
+  });
+
+  res.redirect(`https://www.facebook.com/v20.0/dialog/oauth?${params}`);
+};
+
+// GET /api/auth/facebook/callback
+// Facebook redirige aquí con ?code=...&state=...
+const facebookCallback = async (req, res) => {
+  try {
+    const { code, state, error } = req.query;
+
+    if (error || !code) {
+      return res.redirect(`${process.env.FRONTEND_URL}/login?error=facebook_cancelled`);
+    }
+
+    // Parsear state
+    let role = 'seeker';
+    let ref  = '';
+    try {
+      const parsed = JSON.parse(state || '{}');
+      role = parsed.role || 'seeker';
+      ref  = parsed.ref  || '';
+    } catch (_) {}
+
+    const redirectUri = process.env.FACEBOOK_CALLBACK_URL || `${process.env.BACKEND_URL}/api/auth/facebook/callback`;
+
+    // 1. Intercambiar code por access_token
+    const tokenParams = new URLSearchParams({
+      client_id:     process.env.FACEBOOK_APP_ID,
+      client_secret: process.env.FACEBOOK_APP_SECRET,
+      redirect_uri:  redirectUri,
+      code,
+    });
+
+    const tokenRes  = await fetch(`https://graph.facebook.com/v20.0/oauth/access_token?${tokenParams}`);
+    const tokenData = await tokenRes.json();
+
+    if (!tokenData.access_token) {
+      console.error('Facebook token error:', tokenData);
+      return res.redirect(`${process.env.FRONTEND_URL}/login?error=facebook_token`);
+    }
+
+    // 2. Obtener datos del usuario de Facebook
+    const userInfoRes = await fetch(
+      `https://graph.facebook.com/me?fields=id,name,email&access_token=${tokenData.access_token}`
+    );
+    const fbUser = await userInfoRes.json();
+
+    if (!fbUser.email) {
+      // Facebook a veces no devuelve email (cuenta sin email verificado, o el usuario no lo compartió)
+      return res.redirect(`${process.env.FRONTEND_URL}/login?error=facebook_no_email`);
+    }
+
+    // 3. Buscar o crear el usuario
+    let user = await User.findOne({ email: fbUser.email });
+
+    if (!user) {
+      user = await User.create({
+        name:          fbUser.name || fbUser.email.split('@')[0],
+        email:         fbUser.email,
+        password:      crypto.randomBytes(20).toString('hex'),
+        role,
+        emailVerified: true, // Facebook ya verificó el email
+        facebookId:    fbUser.id,
+      });
+
+      if (role === 'provider') {
+        let referredByUserId = null;
+        if (ref?.trim()) {
+          const referrerProfile = await ProviderProfile.findOne({ referralCode: ref.trim() });
+          if (referrerProfile) {
+            referredByUserId = referrerProfile.userId;
+            await ProviderProfile.findByIdAndUpdate(referrerProfile._id, {
+              $inc: { referralCredits: 500 },
+            });
+          }
+        }
+        await ProviderProfile.create({ userId: user._id, referredBy: referredByUserId });
+      } else {
+        await SeekerProfile.create({ userId: user._id });
+      }
+
+      sendWelcomeEmail(user.email, user.name, role).catch(() => {});
+
+    } else {
+      if (!user.facebookId) {
+        user.facebookId    = fbUser.id;
+        user.emailVerified = true;
+        await user.save();
+      }
+      if (user.status === 'blocked') {
+        return res.redirect(`${process.env.FRONTEND_URL}/login?error=blocked`);
+      }
+
+      const currentRole = user.role;
+      if (currentRole !== 'admin' && currentRole !== 'both' && currentRole !== role) {
+        if (role === 'provider') {
+          const exists = await ProviderProfile.findOne({ userId: user._id });
+          if (!exists) await ProviderProfile.create({ userId: user._id });
+        } else if (role === 'seeker') {
+          const exists = await SeekerProfile.findOne({ userId: user._id });
+          if (!exists) await SeekerProfile.create({ userId: user._id });
+        }
+        user.role = 'both';
+        await user.save();
+        sendWelcomeEmail(user.email, user.name, role).catch(() => {});
+      }
+    }
+
+    // 4. Generar JWT y redirigir al frontend (mismo endpoint de éxito que Google)
+    const token = generateToken(user._id);
+    res.redirect(
+      `${process.env.FRONTEND_URL}/auth/google-success?token=${token}&role=${user.role}`
+    );
+  } catch (err) {
+    console.error('facebookCallback error:', err);
+    res.redirect(`${process.env.FRONTEND_URL}/login?error=facebook_error`);
   }
 };
 
@@ -754,6 +891,9 @@ module.exports = {
   // Google OAuth
   googleAuth,
   googleCallback,
+  // Facebook OAuth
+  facebookAuth,
+  facebookCallback,
   // Plan
   upgradePlan,
   adminUpgradePlan,

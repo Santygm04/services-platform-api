@@ -59,6 +59,14 @@ const userSchema = new mongoose.Schema(
       default: null,
       sparse: true,
     },
+    // ── Facebook OAuth ────────────────────────────────────
+    // ID único que devuelve Facebook al autenticar.
+    // null para usuarios registrados con email/password o Google.
+    facebookId: {
+      type: String,
+      default: null,
+      sparse: true,
+    },
     activeRole: {
       type: String,
       enum: ['provider', 'seeker', null],
@@ -88,7 +96,8 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
-// ── Índice sparse en googleId ─────────────────────────────
+// ── Índice sparse en googleId / facebookId ────────────────
 userSchema.index({ googleId: 1 }, { sparse: true });
+userSchema.index({ facebookId: 1 }, { sparse: true });
 
 module.exports = mongoose.model('User', userSchema);

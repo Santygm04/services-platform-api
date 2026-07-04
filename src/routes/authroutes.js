@@ -20,6 +20,9 @@ const {
   // Google OAuth
   googleAuth,
   googleCallback,
+  // Facebook OAuth
+  facebookAuth,
+  facebookCallback,
   // Plan
   upgradePlan,
   adminUpgradePlan,
@@ -47,21 +50,14 @@ router.post('/reset-password',      resetPassword);
 router.patch('/change-password',    protect, changePassword);
 router.patch('/active-role',        protect, setActiveRole);
 
-// ── Google OAuth ──────────────────────────────────────────
-// 1. Frontend redirige a: GET /api/auth/google?role=provider|seeker&ref=CODIGO
-// 2. Google redirige a:   GET /api/auth/google/callback
-// 3. Backend redirige a:  FRONTEND_URL/auth/google-success?token=JWT&role=ROLE
-//
-// Variables de entorno necesarias:
-//   GOOGLE_CLIENT_ID     → Google Cloud Console
-//   GOOGLE_CLIENT_SECRET → Google Cloud Console
-//   (agregar en Backend/.env)
-//
-// En Google Cloud Console, agregar como "Authorized redirect URI":
-//   https://api.zonaservicios.com.ar/api/auth/google/callback
-//   http://localhost:5000/api/auth/google/callback (dev)
+
+
 router.get('/google',          googleAuth);
 router.get('/google/callback', googleCallback);
+
+
+router.get('/facebook',          facebookAuth);
+router.get('/facebook/callback', facebookCallback);
 
 // ── Plan upgrade ──────────────────────────────────────────
 // Prestador actualiza su propio plan (llamado desde frontend post-pago)
