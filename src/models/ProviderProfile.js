@@ -34,6 +34,12 @@ const providerProfileSchema = new mongoose.Schema(
       ref: 'ServiceCategory',
       default: null,
     },
+    // Slug de la subcategoría/especialidad dentro del rubro (ej: "instalaciones-electricas")
+    subcategory: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     profilePhoto: {
       type: String,
       default: '',

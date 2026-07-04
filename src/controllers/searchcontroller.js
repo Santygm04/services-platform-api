@@ -38,28 +38,14 @@ const searchProviders = async (req, res) => {
       filter.category = category;
     }
 
-    // Subcategoría: busca prestadores que tengan la profesión matcheando el nombre de subcategoría
+    // Subcategoría: ahora se guarda como slug exacto en el perfil (ProviderProfile.subcategory)
+    // en vez de buscar por texto libre en profession/bio. Esto elimina los falsos "0 resultados".
     if (subcategory) {
-      // Buscar la subcategoría en las categorías
-      const cat = await ServiceCategory.findOne({ 'subcategories.slug': subcategory });
-      if (cat) {
-        const sub = cat.subcategories.find(s => s.slug === subcategory);
-        if (sub) {
-          // Filtrar por nombre de subcategoría en profession o bio
-          const subFilter = { $regex: sub.name, $options: 'i' };
-          if (filter.$or) {
-            // Ya hay keyword, combinar con AND
-            filter.$and = [
-              { $or: filter.$or },
-              { $or: [{ profession: subFilter }, { bio: subFilter }] },
-            ];
-            delete filter.$or;
-          } else {
-            filter.$or = [{ profession: subFilter }, { bio: subFilter }];
-          }
-          // También filtrar por la categoría padre
-          filter.category = cat._id;
-        }
+      filter.subcategory = subcategory;
+      // Si no vino category explícita, la inferimos desde la subcategoría elegida
+      if (!filter.category) {
+        const cat = await ServiceCategory.findOne({ 'subcategories.slug': subcategory }).select('_id');
+        if (cat) filter.category = cat._id;
       }
     }
 

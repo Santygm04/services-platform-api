@@ -28,7 +28,7 @@ const updateMyProfile = async (req, res) => {
     }
 
     const isPremium = existing.plan === 'premium';
-    const allowedFields = ['profession', 'zone', 'bio', 'phone'];
+    const allowedFields = ['profession', 'zone', 'bio', 'phone', 'category', 'subcategory'];
     if (isPremium) allowedFields.push('urgencyAvailable');
 
     const updates = {};
