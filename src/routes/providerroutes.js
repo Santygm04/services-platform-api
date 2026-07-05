@@ -11,6 +11,7 @@ const {
   getNearbyActivity,
   getNearbySeekersForMe,
   toggleActiveStatus,
+  getPublicStats,
 } = require('../controllers/providercontroller');
 const { protect, requireEmailVerified, optionalAuth } = require('../middlewares/authmiddleware');
 const { authorizeRoles } = require('../middlewares/rolemiddleware');
@@ -18,6 +19,10 @@ const { getProviderReviews } = require('../controllers/reviewcontroller');
 
 // ── Públicas — lista ──
 router.get('/', getAllProviders);
+
+// ── Pública — contadores reales para el Home ──
+// IMPORTANTE: va antes de /:id, sino Express interpreta "stats" como un ID
+router.get('/stats/public', getPublicStats);
 
 // ── Protegidas /me — DEBEN ir SIEMPRE antes de /:id ──
 router.get('/me/profile',         protect, authorizeRoles('provider'), getMyProfile);

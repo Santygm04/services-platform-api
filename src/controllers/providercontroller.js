@@ -212,6 +212,31 @@ const toggleActiveStatus = async (req, res) => {
   }
 };
 
+// ── GET /api/providers/stats/public ─────────────────────────
+// Contadores reales para el Home (reemplaza los números hardcodeados de STATS)
+const getPublicStats = async (req, res) => {
+  try {
+    const [totalProviders, verifiedProviders, reviewsCount, zones] = await Promise.all([
+      ProviderProfile.countDocuments({}),
+      ProviderProfile.countDocuments({ verified: true }),
+      Review.countDocuments({ hidden: { $ne: true } }),
+      ProviderProfile.distinct('zone'),
+    ]);
+
+    const citiesCount = zones.filter(Boolean).length;
+
+    res.json({
+      providers: totalProviders,
+      verified:  verifiedProviders,
+      reviews:   reviewsCount,
+      cities:    citiesCount,
+    });
+  } catch (error) {
+    console.error('getPublicStats error:', error);
+    res.status(500).json({ message: 'Error interno del servidor' });
+  }
+};
+
 // ── helpers ────────────────────────────────────────────────
 const registerView = async (profile) => {
   if (profile.plan === 'plus') {
@@ -421,4 +446,5 @@ module.exports = {
   getNearbyActivity,
   getNearbySeekersForMe,
   toggleActiveStatus,
+  getPublicStats,
 };
