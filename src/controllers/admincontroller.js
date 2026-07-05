@@ -260,6 +260,7 @@ const getUsers = async (req, res) => {
 
     const usersWithProfile = await Promise.all(users.map(async u => {
   const obj = u.toObject();
+  obj.registrationMethod = obj.googleId ? 'google' : obj.facebookId ? 'facebook' : 'email';
   if (u.role === 'provider') {
     const profile = await ProviderProfile.findOne({ userId: u._id })
       .select('profession zone plan verified profilePhoto ratingAverage reviewsCount urgencyAvailable activeStatus lastActiveAt createdAt _id');
@@ -293,8 +294,10 @@ const getUsers = async (req, res) => {
 // ── GET /api/admin/users/:id ─────────────────────────────
 const getUserDetail = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('-password -emailVerificationToken -passwordResetToken');
-    if (!user) return res.status(404).json({ message: 'No encontrado' });
+    const userDoc = await User.findById(req.params.id).select('-password -emailVerificationToken -passwordResetToken');
+    if (!userDoc) return res.status(404).json({ message: 'No encontrado' });
+    const user = userDoc.toObject();
+    user.registrationMethod = user.googleId ? 'google' : user.facebookId ? 'facebook' : 'email';
     let profile = null;
     let seekerProfile = null;
 
@@ -351,9 +354,11 @@ const exportUsers = async (req, res) => {
       return obj;
     }));
 
-    const headers = ['Nombre', 'Email', 'Rol', 'Estado', 'Email verificado', 'Profesión', 'Zona', 'Plan', 'Verificado', 'Rating', 'Reseñas', 'Registrado'];
+    const headers = ['Nombre', 'Email', 'Rol', 'Método registro', 'Estado', 'Email verificado', 'Profesión', 'Zona', 'Plan', 'Verificado', 'Rating', 'Reseñas', 'Registrado'];
     const rows = withProfiles.map(u => [
-      u.name, u.email, u.role, u.status,
+      u.name, u.email, u.role,
+      u.googleId ? 'Google' : u.facebookId ? 'Facebook' : 'Email',
+      u.status,
       u.emailVerified ? 'Sí' : 'No',
       u.profile?.profession || '', u.profile?.zone || '',
       u.profile?.plan || '', u.profile?.verified ? 'Sí' : '',
