@@ -1,19 +1,24 @@
 const { MercadoPagoConfig, Preference, Payment } = require('mercadopago');
-const cloudinary = require('../config/cloudinary');
-const BannerAd   = require('../models/bannerad');
+const cloudinary  = require('../config/cloudinary');
+const BannerAd    = require('../models/bannerad');
+const SiteConfig  = require('../models/siteconfig');
 
 // ── Cliente MP ────────────────────────────────────────────
 const mp = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN,
 });
 
-// ── Precios por posición (ARS/semana) ─────────────────────
-const SLOT_PRICES = {
-  sidebar:         18000,
-  home_top:        35000,
-  home_featured:   28000,
-  home_bottom:     20000,
-  profile_sidebar: 18000,
+// ── Posiciones válidas (fijas) — el PRECIO de cada una ahora vive en SiteConfig ──
+const SLOT_KEYS = ['sidebar', 'home_top', 'home_featured', 'home_bottom', 'profile_sidebar'];
+// Fallback por si SiteConfig no está inicializada todavía
+const DEFAULT_SLOT_PRICES = {
+  sidebar: 18000, home_top: 35000, home_featured: 28000, home_bottom: 20000, profile_sidebar: 18000,
+};
+
+// Devuelve el objeto de precios reales, mezclando con los defaults
+const getSlotPrices = async () => {
+  const cfg = await SiteConfig.getSingleton();
+  return { ...DEFAULT_SLOT_PRICES, ...(cfg.bannerPrices || {}) };
 };
 
 const POSITION_LABELS = {
@@ -120,6 +125,7 @@ const sorted = [
 // ── GET /api/banners/prices ───────────────────────────────
 const getBannerPrices = async (req, res) => {
   try {
+    const SLOT_PRICES = await getSlotPrices();
     const now      = new Date();
     const occupied = await BannerAd.find({
       status:     'active',
@@ -157,6 +163,7 @@ res.json({ prices: SLOT_PRICES, positions, availability });
 const createBannerCheckout = async (req, res) => {
   try {
     const { weeks = 1, position = 'sidebar_left', linkUrl = '', title = '' } = req.body;
+    const SLOT_PRICES = await getSlotPrices();
 
     if (!SLOT_PRICES[position]) return res.status(400).json({ message: 'Posición no válida' });
     if (weeks < 1 || weeks > 52) return res.status(400).json({ message: 'Semanas inválidas (1-52)' });
@@ -364,6 +371,7 @@ const adminUpdateBanner = async (req, res) => {
     if (imageUrl   !== undefined) updates.imageUrl   = imageUrl;
 
     if (position !== undefined) {
+      const SLOT_PRICES = await getSlotPrices();
       if (!SLOT_PRICES[position]) return res.status(400).json({ message: 'Posición no válida' });
       updates.position    = position;
       updates.pricePerWeek = SLOT_PRICES[position];

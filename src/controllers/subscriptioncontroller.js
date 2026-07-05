@@ -3,20 +3,22 @@ const Subscription    = require('../models/subscription');
 const PaymentModel    = require('../models/payment');
 const ProviderProfile = require('../models/ProviderProfile');
 const User            = require('../models/User');
+const SiteConfig       = require('../models/siteconfig');
 const { sendPlanUpgradeEmail } = require('../services/emailservice');
 
-
-
 // ── Configuración de planes ───────────────────────────────
-const PLAN_CONFIG = {
-  plus: {
-    price: 4999,                                       // ← FIX: estaba en 4
-    title: 'ZonaServicios Plus — Suscripción mensual',
-  },
-  premium: {
-    price: 9999,
-    title: 'ZonaServicios Premium — Suscripción mensual',
-  },
+// Los títulos quedan fijos acá, pero el PRECIO ahora se lee de SiteConfig
+// (editable desde el admin) — getPlanConfig() abajo hace el merge.
+const PLAN_TITLES = {
+  plus:    'ZonaServicios Plus — Suscripción mensual',
+  premium: 'ZonaServicios Premium — Suscripción mensual',
+};
+
+// Devuelve { price, title } combinando el precio real de la config con el título fijo
+const getPlanConfig = async (plan) => {
+  const cfg = await SiteConfig.getSingleton();
+  const price = cfg.plans?.[plan]?.price;
+  return { price: price ?? (plan === 'premium' ? 9999 : 4999), title: PLAN_TITLES[plan] };
 };
 
 // ── Cliente MP ────────────────────────────────────────────
@@ -31,7 +33,7 @@ const createPreference = async (req, res) => {
   try {
     const { plan = 'plus' } = req.body;
 
-    if (!PLAN_CONFIG[plan]) {
+    if (!PLAN_TITLES[plan]) {
       return res.status(400).json({ message: 'Plan inválido. Opciones: plus, premium' });
     }
 
@@ -39,7 +41,7 @@ const createPreference = async (req, res) => {
     if (!user)                return res.status(404).json({ message: 'Usuario no encontrado' });
     if (user.role !== 'provider') return res.status(403).json({ message: 'Solo los prestadores pueden suscribirse' });
 
-    const cfg = PLAN_CONFIG[plan];
+    const cfg = await getPlanConfig(plan);
 
     console.log('BACKEND_URL:', process.env.BACKEND_URL);
     console.log('WEBHOOK URL:', `${process.env.BACKEND_URL}/api/subscriptions/webhook`);
@@ -96,7 +98,7 @@ const createRecurring = async (req, res) => {
   try {
     const { plan = 'plus' } = req.body;
 
-    if (!PLAN_CONFIG[plan]) {
+    if (!PLAN_TITLES[plan]) {
       return res.status(400).json({ message: 'Plan inválido. Opciones: plus, premium' });
     }
 
@@ -104,7 +106,7 @@ const createRecurring = async (req, res) => {
     if (!user)                return res.status(404).json({ message: 'Usuario no encontrado' });
     if (user.role !== 'provider') return res.status(403).json({ message: 'Solo los prestadores pueden suscribirse' });
 
-    const cfg = PLAN_CONFIG[plan];
+    const cfg = await getPlanConfig(plan);
 
     const preApproval = new PreApproval(mp);
 

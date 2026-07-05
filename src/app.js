@@ -18,6 +18,7 @@ const eventRoutes        = require('./routes/eventroutes');
 const messageRoutes      = require('./routes/messageroutes');
 const notificationRoutes = require('./routes/notificationroutes');
 const analyticsRoutes    = require('./routes/analyticsroutes');
+const siteConfigRoutes   = require('./routes/siteconfigroutes');
 const reportRoutes       = require('./routes/reportroutes');
 const app = express();
 
@@ -68,6 +69,7 @@ app.use('/api/events',        eventRoutes);
 app.use('/api/messages',      messageRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin/analytics', analyticsRoutes);
+app.use('/api/config',          siteConfigRoutes);
 
 // ── Sitemap SEO ──────────────────────────────────────────
 app.get('/sitemap.xml', async (req, res) => {
