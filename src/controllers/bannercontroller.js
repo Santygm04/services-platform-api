@@ -50,7 +50,7 @@ const getActiveBanners = async (req, res) => {
     }).populate('userId', 'name').sort({ startsAt: -1 });
 
     const result = {};
-    for (const pos of Object.keys(SLOT_PRICES)) {
+    for (const pos of SLOT_KEYS) {
       const positionBanners =
         pos === 'home_featured'
           ? banners.filter(b => b.position === 'home_featured' || b.position === 'featured')
@@ -331,6 +331,7 @@ const adminListBanners = async (req, res) => {
 const adminCreateBanner = async (req, res) => {
   try {
     const { position = 'sidebar_left', linkUrl = '', title = '', weeks = 4, adminNotes = '' } = req.body;
+    const SLOT_PRICES = await getSlotPrices();
     if (!SLOT_PRICES[position]) return res.status(400).json({ message: 'Posición no válida' });
 
     const startsAt = new Date();
