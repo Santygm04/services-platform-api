@@ -29,6 +29,19 @@ const siteConfigSchema = new mongoose.Schema(
       home_bottom:     { type: Number, default: 20000 },
       profile_sidebar: { type: Number, default: 18000 },
     },
+
+    offers: {
+      type: [
+        {
+          title:       { type: String, default: '' },
+          description: { type: String, default: '' },
+          badge:       { type: String, default: '' },
+          active:      { type: Boolean, default: true },
+          position:    { type: String, default: '' }, // '' = todas las posiciones
+        },
+      ],
+      default: [],
+    },
   },
   { timestamps: true }
 );
