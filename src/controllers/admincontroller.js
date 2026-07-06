@@ -453,6 +453,117 @@ const changeUserPassword = async (req, res) => {
   }
 };
 
+// ── GET /api/admin/admins — listar admins ────────────────
+const getAdmins = async (req, res) => {
+  try {
+    const admins = await User.find({ role: 'admin' })
+      .select('-password -emailVerificationToken -passwordResetToken')
+      .sort({ createdAt: -1 });
+    res.json({ admins });
+  } catch (err) {
+    console.error('getAdmins:', err);
+    res.status(500).json({ message: 'Error interno' });
+  }
+};
+
+// ── POST /api/admin/admins — crear admin (solo superadmin) ──
+const createAdmin = async (req, res) => {
+  try {
+    if (!req.user.isSuperAdmin) {
+      return res.status(403).json({ message: 'Solo un superadmin puede crear otros admins' });
+    }
+    const { name, email, password, isSuperAdmin } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: 'Nombre, email y contraseña son obligatorios' });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ message: 'La contraseña debe tener al menos 8 caracteres' });
+    }
+    const existing = await User.findOne({ email: email.toLowerCase().trim() });
+    if (existing) return res.status(400).json({ message: 'Ya existe una cuenta con ese email' });
+
+    const admin = await User.create({
+      name, email, password,
+      role: 'admin',
+      emailVerified: true,
+      isSuperAdmin: !!isSuperAdmin,
+    });
+    res.status(201).json({
+      message: 'Admin creado correctamente',
+      admin: { id: admin._id, name: admin.name, email: admin.email, isSuperAdmin: admin.isSuperAdmin },
+    });
+  } catch (err) {
+    console.error('createAdmin:', err);
+    res.status(500).json({ message: 'Error interno' });
+  }
+};
+
+// ── PATCH /api/admin/admins/:id — editar admin (solo superadmin) ──
+const updateAdmin = async (req, res) => {
+  try {
+    if (!req.user.isSuperAdmin) {
+      return res.status(403).json({ message: 'Solo un superadmin puede editar otros admins' });
+    }
+    const { name, email, isSuperAdmin } = req.body;
+    const admin = await User.findById(req.params.id);
+    if (!admin || admin.role !== 'admin') return res.status(404).json({ message: 'Admin no encontrado' });
+
+    if (name  !== undefined) admin.name  = name;
+    if (email !== undefined) admin.email = email;
+    if (isSuperAdmin !== undefined) {
+      if (admin._id.toString() === req.user._id.toString() && !isSuperAdmin) {
+        return res.status(400).json({ message: 'No podés quitarte tu propio superadmin' });
+      }
+      admin.isSuperAdmin = isSuperAdmin;
+    }
+    await admin.save();
+    res.json({ message: 'Admin actualizado', admin: { id: admin._id, name: admin.name, email: admin.email, isSuperAdmin: admin.isSuperAdmin } });
+  } catch (err) {
+    console.error('updateAdmin:', err);
+    res.status(500).json({ message: 'Error interno' });
+  }
+};
+
+// ── DELETE /api/admin/admins/:id — eliminar admin (solo superadmin) ──
+const deleteAdmin = async (req, res) => {
+  try {
+    if (!req.user.isSuperAdmin) {
+      return res.status(403).json({ message: 'Solo un superadmin puede eliminar otros admins' });
+    }
+    if (req.params.id === req.user._id.toString()) {
+      return res.status(400).json({ message: 'No podés eliminar tu propia cuenta de admin' });
+    }
+    const admin = await User.findById(req.params.id);
+    if (!admin || admin.role !== 'admin') return res.status(404).json({ message: 'Admin no encontrado' });
+    await User.deleteOne({ _id: admin._id });
+    res.json({ message: 'Admin eliminado', id: req.params.id });
+  } catch (err) {
+    console.error('deleteAdmin:', err);
+    res.status(500).json({ message: 'Error interno' });
+  }
+};
+
+// ── PATCH /api/admin/admins/:id/password — cambiar pass de otro admin ──
+const changeAdminPassword = async (req, res) => {
+  try {
+    if (!req.user.isSuperAdmin) {
+      return res.status(403).json({ message: 'Solo un superadmin puede cambiar la contraseña de otro admin' });
+    }
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 8) {
+      return res.status(400).json({ message: 'La contraseña debe tener al menos 8 caracteres' });
+    }
+    const admin = await User.findById(req.params.id);
+    if (!admin || admin.role !== 'admin') return res.status(404).json({ message: 'Admin no encontrado' });
+    admin.password = newPassword;
+    await admin.save();
+    res.json({ message: 'Contraseña del admin actualizada' });
+  } catch (err) {
+    console.error('changeAdminPassword:', err);
+    res.status(500).json({ message: 'Error interno' });
+  }
+};
+
 // ── DELETE /api/admin/users/:id ──────────────────────────
 const deleteUser = async (req, res) => {
   try {
@@ -769,6 +880,7 @@ module.exports = {
   getUsers, getUserDetail, exportUsers,
   bulkAction, blockUser, unblockUser, deactivateUser, reactivateUser, deleteUser,
   changeUserPassword,
+  getAdmins, createAdmin, updateAdmin, deleteAdmin, changeAdminPassword,
   verifyProvider, unverifyProvider, upgradePlan,
   getReviews, hideReview, showReview,
   globalSearch, verifyUserEmail,

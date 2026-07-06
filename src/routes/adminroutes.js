@@ -22,6 +22,7 @@ const {
   getUsers, getUserDetail, exportUsers,
   bulkAction, blockUser, unblockUser, deactivateUser, reactivateUser, deleteUser,
   changeUserPassword,
+  getAdmins, createAdmin, updateAdmin, deleteAdmin, changeAdminPassword,
   verifyProvider, unverifyProvider, upgradePlan,
   getReviews, hideReview, showReview,
   globalSearch, verifyUserEmail,
@@ -56,6 +57,13 @@ router.patch('/users/:id/deactivate',   deactivateUser);
 router.patch('/users/:id/reactivate',   reactivateUser);
 router.delete('/users/:id',             deleteUser);
 router.patch('/users/:id/password',     changeUserPassword);
+
+// ── Gestión de admins (rol 90/112) ───────────────────────
+router.get('/admins',                   getAdmins);
+router.post('/admins',                  createAdmin);
+router.patch('/admins/:id',             updateAdmin);
+router.delete('/admins/:id',            deleteAdmin);
+router.patch('/admins/:id/password',    changeAdminPassword);
 router.delete('/users/:id/seeker',      deleteSeekerRole);
 router.delete('/users/:id/provider',    deleteProviderRole);
 router.patch('/users/:id/verify-email', verifyUserEmail);

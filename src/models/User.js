@@ -25,7 +25,19 @@ const userSchema = new mongoose.Schema(
       enum: ['seeker', 'provider', 'admin', 'both'],
       required: true,
     },
-    emailVerified: {
+    emailverified: {
+      type: Boolean,
+      default: false,
+    },
+    isSuperAdmin: {
+      type: Boolean,
+      default: false,
+    },
+    isSuperAdmin: {
+      type: Boolean,
+      default: false,
+    },
+    isSuperAdmin: {
       type: Boolean,
       default: false,
     },
@@ -39,6 +51,14 @@ const userSchema = new mongoose.Schema(
       default: 'active',
     },
     verified: {
+      type: Boolean,
+      default: false,
+    },
+    isSuperAdmin: {
+      type: Boolean,
+      default: false,
+    },
+    isSuperAdmin: {
       type: Boolean,
       default: false,
     },
