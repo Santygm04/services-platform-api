@@ -434,6 +434,25 @@ const reactivateUser = async (req, res) => {
   } catch (err) { res.status(500).json({ message: 'Error interno' }); }
 };
 
+// ── PATCH /api/admin/users/:id/password ──────────────────
+const changeUserPassword = async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 8) {
+      return res.status(400).json({ message: 'La contraseña debe tener al menos 8 caracteres' });
+    }
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'No encontrado' });
+    if (user.role === 'admin') return res.status(400).json({ message: 'No podés cambiar la contraseña de un admin desde acá' });
+    user.password = newPassword; // el pre-save hook de User.js la hashea sola
+    await user.save();
+    res.json({ message: 'Contraseña actualizada correctamente' });
+  } catch (err) {
+    console.error('changeUserPassword:', err);
+    res.status(500).json({ message: 'Error interno' });
+  }
+};
+
 // ── DELETE /api/admin/users/:id ──────────────────────────
 const deleteUser = async (req, res) => {
   try {
@@ -749,6 +768,7 @@ module.exports = {
   getFeaturedProviders, toggleUrgency,
   getUsers, getUserDetail, exportUsers,
   bulkAction, blockUser, unblockUser, deactivateUser, reactivateUser, deleteUser,
+  changeUserPassword,
   verifyProvider, unverifyProvider, upgradePlan,
   getReviews, hideReview, showReview,
   globalSearch, verifyUserEmail,

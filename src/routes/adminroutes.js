@@ -21,6 +21,7 @@ const {
   getFeaturedProviders, toggleUrgency,
   getUsers, getUserDetail, exportUsers,
   bulkAction, blockUser, unblockUser, deactivateUser, reactivateUser, deleteUser,
+  changeUserPassword,
   verifyProvider, unverifyProvider, upgradePlan,
   getReviews, hideReview, showReview,
   globalSearch, verifyUserEmail,
@@ -54,6 +55,7 @@ router.patch('/users/:id/unblock',      unblockUser);
 router.patch('/users/:id/deactivate',   deactivateUser);
 router.patch('/users/:id/reactivate',   reactivateUser);
 router.delete('/users/:id',             deleteUser);
+router.patch('/users/:id/password',     changeUserPassword);
 router.delete('/users/:id/seeker',      deleteSeekerRole);
 router.delete('/users/:id/provider',    deleteProviderRole);
 router.patch('/users/:id/verify-email', verifyUserEmail);
