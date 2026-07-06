@@ -26,7 +26,6 @@ const {
   verifyProvider, unverifyProvider, upgradePlan,
   getReviews, hideReview, showReview,
   globalSearch, verifyUserEmail,
-  getAdminBanners, updateAdminBanner, deleteAdminBanner, createAdminBanner,
   deleteGhostProvider,
   createAdminLog, getAdminLogs, deleteAdminLog,
   deleteSeekerRole, deleteProviderRole,
@@ -38,6 +37,16 @@ const {
   adminUpdateBanner,
   adminDeleteBanner,
 } = require('../controllers/bannercontroller');
+
+const SiteConfig = require('../models/siteconfig');
+router.get('/config/public', async (req, res) => {
+  try {
+    const config = await SiteConfig.getSingleton();
+    res.json({ config: { offers: config?.offers || [] } });
+  } catch {
+    res.json({ config: { offers: [] } });
+  }
+});
 
 router.use(protect);
 router.use(authorizeRoles('admin'));
@@ -129,11 +138,6 @@ router.get('/providers/:id/stats', async (req, res) => {
 router.get('/reviews',             getReviews);
 router.patch('/reviews/:id/hide',  hideReview);
 router.patch('/reviews/:id/show',  showReview);
-
-router.get('/banners',             getAdminBanners);
-router.post('/banners',            createAdminBanner);
-router.patch('/banners/:id',       updateAdminBanner);
-router.delete('/banners/:id',      deleteAdminBanner);
 
 router.post('/upload', uploadMemory.single('image'), async (req, res) => {
   try {
