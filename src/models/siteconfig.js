@@ -33,11 +33,13 @@ const siteConfigSchema = new mongoose.Schema(
     offers: {
       type: [
         {
-          title:       { type: String, default: '' },
-          description: { type: String, default: '' },
-          badge:       { type: String, default: '' },
-          active:      { type: Boolean, default: true },
-          position:    { type: String, default: '' }, // '' = todas las posiciones
+          title:         { type: String, default: '' },
+          description:   { type: String, default: '' },
+          badge:         { type: String, default: '' },
+          active:        { type: Boolean, default: true },
+          position:      { type: String, default: '' }, // '' = todas las posiciones
+          discountType:  { type: String, enum: ['none', 'percent', 'weeks2x1'], default: 'none' },
+          discountValue: { type: Number, default: 0 }, // % si discountType === 'percent'
         },
       ],
       default: [],

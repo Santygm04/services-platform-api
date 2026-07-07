@@ -29,6 +29,17 @@ const POSITION_LABELS = {
   profile_sidebar: 'Laterales Perfiles Buscador/Prestador',
 };
 
+// Busca la oferta/promo activa que aplique a una posición (o global, position:'')
+const getActiveOfferForPosition = async (position) => {
+  const cfg = await SiteConfig.getSingleton();
+  const offers = cfg.offers || [];
+  return offers.find(o =>
+    o.active &&
+    (!o.position || o.position === position) &&
+    o.discountType && o.discountType !== 'none'
+  ) || null;
+};
+
 const uploadToCloudinary = (fileBuffer, folder, publicId) =>
   new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
@@ -169,16 +180,30 @@ const createBannerCheckout = async (req, res) => {
     if (weeks < 1 || weeks > 52) return res.status(400).json({ message: 'Semanas inválidas (1-52)' });
 
     const pricePerWeek = SLOT_PRICES[position];
-    const total        = pricePerWeek * weeks;
-    const startsAt     = new Date();
-    const endsAt       = new Date();
-    endsAt.setDate(endsAt.getDate() + weeks * 7);
+
+    // ── Promo activa para esta posición ──
+    const offer = await getActiveOfferForPosition(position);
+    let contractWeeks  = weeks; // semanas que realmente queda activo el banner
+    let total          = pricePerWeek * weeks;
+    let discountLabel  = '';
+
+    if (offer?.discountType === 'percent' && offer.discountValue > 0) {
+      total = Math.round(total * (1 - offer.discountValue / 100));
+      discountLabel = ` (-${offer.discountValue}%)`;
+    } else if (offer?.discountType === 'weeks2x1') {
+      contractWeeks = weeks * 2; // paga weeks, dura el doble
+      discountLabel = ' (2x1)';
+    }
+
+    const startsAt = new Date();
+    const endsAt   = new Date();
+    endsAt.setDate(endsAt.getDate() + contractWeeks * 7);
 
     const banner = await BannerAd.create({
       userId: req.user._id,
       position,
       pricePerWeek,
-      weeks,
+      weeks: contractWeeks,
       linkUrl,
       title,
       startsAt,
@@ -192,7 +217,7 @@ const createBannerCheckout = async (req, res) => {
       body: {
         items: [{
           id:          `banner-${position}`,
-          title:       `Banner ZonaServicios — ${POSITION_LABELS[position]} — ${weeks} sem.`,
+          title:       `Banner ZonaServicios — ${POSITION_LABELS[position]} — ${contractWeeks} sem.${discountLabel}`,
           unit_price:  total,
           quantity:    1,
           currency_id: 'ARS',
@@ -218,6 +243,7 @@ const createBannerCheckout = async (req, res) => {
       total,
       position,
       pricePerWeek,
+      weeks: contractWeeks,
     });
   } catch (error) {
     console.error('createBannerCheckout error:', error);
