@@ -25,12 +25,16 @@ const adminGetConfig = async (req, res) => {
 // ── PATCH /api/config/admin — el admin edita precios/promos ──
 const adminUpdateConfig = async (req, res) => {
   try {
-    const { plans, bannerPrices } = req.body;
+    const { plans, bannerPrices, offers } = req.body;
     const cfg = await SiteConfig.getSingleton();
 
     if (plans?.plus)    Object.assign(cfg.plans.plus, plans.plus);
     if (plans?.premium) Object.assign(cfg.plans.premium, plans.premium);
     if (bannerPrices)   Object.assign(cfg.bannerPrices, bannerPrices);
+    if (offers !== undefined) {
+      cfg.offers = offers;
+      cfg.markModified('offers');
+    }
 
     await cfg.save();
     res.json({ message: 'Configuración actualizada', config: cfg });
