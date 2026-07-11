@@ -472,7 +472,7 @@ const createAdmin = async (req, res) => {
     if (!req.user.isSuperAdmin) {
       return res.status(403).json({ message: 'Solo un superadmin puede crear otros admins' });
     }
-    const { name, email, password, isSuperAdmin } = req.body;
+    const { name, email, password, isSuperAdmin, adminPermissions } = req.body;
     if (!name || !email || !password) {
       return res.status(400).json({ message: 'Nombre, email y contraseña son obligatorios' });
     }
@@ -487,10 +487,11 @@ const createAdmin = async (req, res) => {
       role: 'admin',
       emailVerified: true,
       isSuperAdmin: !!isSuperAdmin,
+      ...(adminPermissions ? { adminPermissions } : {}),
     });
     res.status(201).json({
       message: 'Admin creado correctamente',
-      admin: { id: admin._id, name: admin.name, email: admin.email, isSuperAdmin: admin.isSuperAdmin },
+      admin: { id: admin._id, name: admin.name, email: admin.email, isSuperAdmin: admin.isSuperAdmin, adminPermissions: admin.adminPermissions },
     });
   } catch (err) {
     console.error('createAdmin:', err);
@@ -504,7 +505,7 @@ const updateAdmin = async (req, res) => {
     if (!req.user.isSuperAdmin) {
       return res.status(403).json({ message: 'Solo un superadmin puede editar otros admins' });
     }
-    const { name, email, isSuperAdmin } = req.body;
+    const { name, email, isSuperAdmin, adminPermissions } = req.body;
     const admin = await User.findById(req.params.id);
     if (!admin || admin.role !== 'admin') return res.status(404).json({ message: 'Admin no encontrado' });
 
@@ -516,8 +517,11 @@ const updateAdmin = async (req, res) => {
       }
       admin.isSuperAdmin = isSuperAdmin;
     }
+    if (adminPermissions !== undefined) {
+      admin.adminPermissions = { ...admin.adminPermissions?.toObject?.() ?? admin.adminPermissions, ...adminPermissions };
+    }
     await admin.save();
-    res.json({ message: 'Admin actualizado', admin: { id: admin._id, name: admin.name, email: admin.email, isSuperAdmin: admin.isSuperAdmin } });
+    res.json({ message: 'Admin actualizado', admin: { id: admin._id, name: admin.name, email: admin.email, isSuperAdmin: admin.isSuperAdmin, adminPermissions: admin.adminPermissions } });
   } catch (err) {
     console.error('updateAdmin:', err);
     res.status(500).json({ message: 'Error interno' });

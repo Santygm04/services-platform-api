@@ -1,7 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middlewares/authmiddleware');
-const { authorizeRoles } = require('../middlewares/rolemiddleware');
+const { authorizeRoles, authorizeSection } = require('../middlewares/rolemiddleware');
+
+// Solo superadmin puede tocar gestión de otros admins (defensa extra, además del chequeo en el controller)
+const requireSuperAdmin = (req, res, next) => {
+  if (!req.user.isSuperAdmin) {
+    return res.status(403).json({ message: 'Esta acción requiere permisos de superadmin.' });
+  }
+  next();
+};
 const multer = require('multer');
 const cloudinary = require('../config/cloudinary');
 const ProviderProfile = require('../models/ProviderProfile');
@@ -50,6 +58,17 @@ router.get('/config/public', async (req, res) => {
 
 router.use(protect);
 router.use(authorizeRoles('admin'));
+
+// ── Restricciones por sección (según adminPermissions del admin) ──
+// Métricas, actividad, live y búsqueda global quedan abiertas a cualquier admin (solo lectura).
+router.use('/users',      authorizeSection('users'));
+router.use('/admins',     requireSuperAdmin);
+router.use('/providers',  authorizeSection('providers'));
+router.use('/reviews',    authorizeSection('reviews'));
+router.use('/banners',    authorizeSection('banners'));
+router.use('/categories', authorizeSection('categorias'));
+router.use('/logs',       authorizeSection('logs'));
+router.use('/upload',     authorizeSection('banners'));
 
 router.get('/metrics',  getMetrics);
 router.get('/activity', getActivity);

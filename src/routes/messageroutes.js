@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middlewares/authmiddleware');
+const { authorizeSection } = require('../middlewares/rolemiddleware');
 const {
   sendMessage,
   getConversations,
@@ -15,6 +16,9 @@ const {
 } = require('../controllers/messagecontroller');
 
 router.use(protect);
+// Nota: authorizeSection('messages') solo restringe si req.user.role === 'admin'.
+// Buscadores y prestadores usando estas rutas para sus propios chats no se ven afectados.
+router.use(authorizeSection('messages'));
 
 // Rutas fijas ANTES de :conversationId
 router.get('/conversations', getConversations);

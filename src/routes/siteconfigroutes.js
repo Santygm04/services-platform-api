@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middlewares/authmiddleware');
-const { authorizeRoles } = require('../middlewares/rolemiddleware');
+const { authorizeRoles, authorizeSection } = require('../middlewares/rolemiddleware');
 const {
   getPublicConfig,
   adminGetConfig,
@@ -10,7 +10,7 @@ const {
 
 router.get('/', getPublicConfig); // pública — sin auth
 
-router.get('/admin',   protect, authorizeRoles('admin'), adminGetConfig);
-router.patch('/admin', protect, authorizeRoles('admin'), adminUpdateConfig);
+router.get('/admin',   protect, authorizeRoles('admin'), authorizeSection('config'), adminGetConfig);
+router.patch('/admin', protect, authorizeRoles('admin'), authorizeSection('config'), adminUpdateConfig);
 
 module.exports = router;
