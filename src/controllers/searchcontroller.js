@@ -69,20 +69,26 @@ const searchProviders = async (req, res) => {
 
     // Traer todos para ordenar por plan correctamente antes de paginar
     const allProviders = await ProviderProfile.find(filter)
-      .populate('userId', 'name')
+      .populate('userId', 'name emailVerified status')
       .populate('category', 'name slug')
       .select('-phone -viewsTracking -portfolio -links ');
 
-    const total = await ProviderProfile.countDocuments(filter);
+    const validProviders = allProviders.filter(p =>
+      p.userId &&
+      p.userId.emailVerified === true &&
+      p.userId.status !== 'blocked' &&
+      p.userId.status !== 'inactive'
+    );
+
+    const total = validProviders.length;
 
     // ── Ordenar por plan con rotación cada 30 min ──────────
     const rotationSlot = Math.floor(Date.now() / (30 * 60 * 1000));
 
-    const premiums = allProviders.filter(p => p.plan === 'premium');
-    const plus     = allProviders.filter(p => p.plan === 'plus');
-    const free = allProviders.filter(p => p.plan !== 'premium' && p.plan !== 'plus');
-    const activeProviders   = [...premiums.filter(p => p.activeStatus !== false), ...plus.filter(p => p.activeStatus !== false), ...free.filter(p => p.activeStatus !== false)];
-    const inactiveProviders = allProviders.filter(p => p.activeStatus === false);
+    const premiums = validProviders.filter(p => p.plan === 'premium');
+    const plus     = validProviders.filter(p => p.plan === 'plus');
+    const free = validProviders.filter(p => p.plan !== 'premium' && p.plan !== 'plus');
+    const inactiveProviders = validProviders.filter(p => p.activeStatus === false);
     const rotate = (arr, slot) => {
       if (arr.length <= 1) return arr;
       const offset = slot % arr.length;

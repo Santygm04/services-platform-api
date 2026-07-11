@@ -2,6 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const morgan = require('morgan');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const mongoSanitize = require('express-mongo-sanitize');
 
 const authRoutes         = require('./routes/authroutes');
 const providerRoutes     = require('./routes/providerroutes');
@@ -43,17 +46,26 @@ app.use(cors({
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
     // Permite webviews de redes sociales (Instagram, Facebook, etc.)
-    if (/instagram\.com|facebook\.com|fbcdn\.net/i.test(origin)) return callback(null, true);
+    if (/^https?:\/\/(www\.)?(instagram\.com|facebook\.com|fbcdn\.net)(\/|$)/i.test(origin)) return callback(null, true);
     callback(new Error(`CORS bloqueado para origen: ${origin}`));
   },
   credentials: true,
 }));
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(helmet());
+app.use(mongoSanitize());
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-app.use('/api/auth',          authRoutes);
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 20,
+  message: { message: 'Demasiados intentos, esperá 15 minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/auth',          authLimiter, authRoutes);
 app.use('/api/providers',     providerRoutes);
 app.use('/api/seekers',       seekerRoutes);
 app.use('/api/search',        searchRoutes);
@@ -208,32 +220,6 @@ app.use((err, req, res, next) => {
     return res.status(401).json({ message: 'Token inválido o expirado' });
   const status = err.status || err.statusCode || 500;
   res.status(status).json({ message: err.message || 'Error interno del servidor' });
-});
-
-// TEST DE EMAIL — borralo después de confirmar que funciona
-const nodemailer = require('nodemailer');
-const testTransporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  tls: { rejectUnauthorized: false },
-  connectionTimeout: 10000,
-  greetingTimeout: 10000,
-  socketTimeout: 15000,
-});
-
-testTransporter.verify((error, success) => {
-  if (error) {
-    console.error('❌ SMTP VERIFY FAILED:', error.message);
-    console.error('Código:', error.code);
-    console.error('Respuesta:', error.response);
-  } else {
-    console.log('✅ SMTP CONECTADO OK — listo para enviar emails');
-  }
 });
 
 module.exports = app;
