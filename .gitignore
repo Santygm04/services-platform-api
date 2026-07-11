@@ -6,3 +6,6 @@ coverage
 *.log
 *.json
 credentials*
+src/scripts/migrateEmailVerified.js
+src/scripts/setSuperAdmin.js
+src/scripts/seedCategories.js
