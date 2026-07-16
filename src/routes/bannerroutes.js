@@ -35,6 +35,17 @@ router.get('/active',   getActiveBanners);
 router.get('/prices',   getBannerPrices);
 router.post('/webhook', bannerWebhook);
 
+// ── Config pública (ofertas activas para Publicidad.jsx) ──
+const SiteConfig = require('../models/siteconfig');
+router.get('/config/public', async (req, res) => {
+  try {
+    const config = await SiteConfig.getSingleton();
+    res.json({ config: { offers: config?.offers || [] } });
+  } catch {
+    res.json({ config: { offers: [] } });
+  }
+});
+
 // ── Redirects de MP → reenvían al frontend ────────────────
 router.get('/redirect/success', (req, res) => {
   const { bannerId = '' } = req.query;
