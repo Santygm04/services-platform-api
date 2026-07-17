@@ -193,6 +193,9 @@ const createBannerCheckout = async (req, res) => {
     } else if (offer?.discountType === 'weeks2x1') {
       contractWeeks = weeks * 2; // paga weeks, dura el doble
       discountLabel = ' (2x1)';
+    } else if (offer?.discountType === 'free') {
+      total = 0;
+      discountLabel = ' (GRATIS)';
     }
 
     const startsAt = new Date();
@@ -209,8 +212,20 @@ const createBannerCheckout = async (req, res) => {
       startsAt,
       endsAt,
       amountPaid: total,
-      status:     'pending_payment',
+      status:     total === 0 ? 'active' : 'pending_payment',
     });
+
+    // ── Oferta 100% gratis: no hay nada que cobrar, MP no acepta unit_price 0 ──
+    if (total === 0) {
+      return res.json({
+        free: true,
+        bannerId: banner._id,
+        total: 0,
+        position,
+        pricePerWeek,
+        weeks: contractWeeks,
+      });
+    }
 
     const preference = new Preference(mp);
     const response   = await preference.create({

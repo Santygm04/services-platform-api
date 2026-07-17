@@ -38,7 +38,7 @@ const siteConfigSchema = new mongoose.Schema(
           badge:         { type: String, default: '' },
           active:        { type: Boolean, default: true },
           position:      { type: String, default: '' }, // '' = todas las posiciones
-          discountType:  { type: String, enum: ['none', 'percent', 'weeks2x1'], default: 'none' },
+          discountType:  { type: String, enum: ['none', 'percent', 'weeks2x1', 'free'], default: 'none' },
           discountValue: { type: Number, default: 0 }, // % si discountType === 'percent'
         },
       ],
