@@ -138,21 +138,24 @@ const getBannerPrices = async (req, res) => {
   try {
     const SLOT_PRICES = await getSlotPrices();
     const now      = new Date();
+    // ── Cualquier banner activo (pago O admin) cuenta como "ocupado" ──
+    // así el aviso de rotación avisa siempre que ya haya algo publicado ahí,
+    // sin importar si es de otro usuario que pagó o de un banner que cargó el admin.
     const occupied = await BannerAd.find({
-      status:     'active',
-      startsAt:   { $lte: now },
-      endsAt:     { $gte: now },
-      amountPaid: { $gt: 0 },
-    }).select('position endsAt');
+      status:   'active',
+      startsAt: { $lte: now },
+      endsAt:   { $gte: now },
+    }).select('position endsAt amountPaid');
 
     const availability = {};
     for (const [pos, price] of Object.entries(SLOT_PRICES)) {
     const slot = occupied.find(b => b.position === pos);
       availability[pos] = {
-        label:         POSITION_LABELS[pos],
-        pricePerWeek:  price,
-        available:     !slot,
-        occupiedUntil: slot ? slot.endsAt : null,
+        label:          POSITION_LABELS[pos],
+        pricePerWeek:   price,
+        available:      !slot,
+        occupiedUntil:  slot ? slot.endsAt : null,
+        occupiedByPaid: slot ? slot.amountPaid > 0 : false,
       };
     }
 
