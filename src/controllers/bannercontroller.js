@@ -187,15 +187,23 @@ const createBannerCheckout = async (req, res) => {
     let total          = pricePerWeek * weeks;
     let discountLabel  = '';
 
+    // Semanas cubiertas por el descuento/gratis (0 = sin límite → todas las semanas)
+    const cap = (offer?.maxWeeks > 0) ? Math.min(weeks, offer.maxWeeks) : weeks;
+    const uncapped = weeks - cap; // semanas que se cobran a precio normal
+
     if (offer?.discountType === 'percent' && offer.discountValue > 0) {
-      total = Math.round(total * (1 - offer.discountValue / 100));
-      discountLabel = ` (-${offer.discountValue}%)`;
+      total = Math.round(pricePerWeek * cap * (1 - offer.discountValue / 100) + pricePerWeek * uncapped);
+      discountLabel = offer.maxWeeks > 0
+        ? ` (-${offer.discountValue}% las primeras ${offer.maxWeeks} sem.)`
+        : ` (-${offer.discountValue}%)`;
+    } else if (offer?.discountType === 'free') {
+      total = pricePerWeek * uncapped;
+      discountLabel = offer.maxWeeks > 0
+        ? ` (GRATIS las primeras ${offer.maxWeeks} sem.)`
+        : ' (GRATIS)';
     } else if (offer?.discountType === 'weeks2x1') {
       contractWeeks = weeks * 2; // paga weeks, dura el doble
       discountLabel = ' (2x1)';
-    } else if (offer?.discountType === 'free') {
-      total = 0;
-      discountLabel = ' (GRATIS)';
     }
 
     const startsAt = new Date();

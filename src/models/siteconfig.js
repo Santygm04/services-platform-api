@@ -40,6 +40,7 @@ const siteConfigSchema = new mongoose.Schema(
           position:      { type: String, default: '' }, // '' = todas las posiciones
           discountType:  { type: String, enum: ['none', 'percent', 'weeks2x1', 'free'], default: 'none' },
           discountValue: { type: Number, default: 0 }, // % si discountType === 'percent'
+          maxWeeks:      { type: Number, default: 0 }, // 0 = sin límite. Semanas con descuento antes de cobrar precio normal.
         },
       ],
       default: [],
