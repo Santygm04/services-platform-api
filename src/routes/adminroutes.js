@@ -219,6 +219,45 @@ router.get('/categories', async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
-}); 
+});
+
+// ── GET /api/admin/config/admin — config completa para el panel ──
+router.get('/config/admin', async (req, res) => {
+  try {
+    const cfg = await SiteConfig.getSingleton();
+    res.json({ config: cfg });
+  } catch {
+    res.status(500).json({ message: 'Error al obtener configuración' });
+  }
+});
+
+// ── PATCH /api/admin/config/admin — guardar config desde el panel ──
+router.patch('/config/admin', async (req, res) => {
+  try {
+    const { plans, bannerPrices, offers } = req.body;
+    const cfg = await SiteConfig.getSingleton();
+
+    if (plans) {
+      if (plans.plus    !== undefined) cfg.plans.plus    = { ...cfg.plans.plus.toObject?.()    ?? cfg.plans.plus,    ...plans.plus    };
+      if (plans.premium !== undefined) cfg.plans.premium = { ...cfg.plans.premium.toObject?.() ?? cfg.plans.premium, ...plans.premium };
+    }
+    if (bannerPrices) {
+      cfg.bannerPrices = { ...cfg.bannerPrices.toObject?.() ?? cfg.bannerPrices, ...bannerPrices };
+    }
+    if (offers !== undefined) {
+      cfg.offers = offers;
+    }
+
+    cfg.markModified('plans');
+    cfg.markModified('bannerPrices');
+    cfg.markModified('offers');
+    await cfg.save();
+
+    res.json({ message: 'Configuración guardada', config: cfg });
+  } catch (err) {
+    console.error('saveConfig:', err);
+    res.status(500).json({ message: 'Error al guardar configuración' });
+  }
+});
 
 module.exports = router;

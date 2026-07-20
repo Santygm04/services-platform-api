@@ -40,9 +40,15 @@ const SiteConfig = require('../models/siteconfig');
 router.get('/config/public', async (req, res) => {
   try {
     const config = await SiteConfig.getSingleton();
-    res.json({ config: { offers: config?.offers || [] } });
+    res.json({
+      config: {
+        offers:       config?.offers       || [],
+        plans:        config?.plans        || {},
+        bannerPrices: config?.bannerPrices || {},
+      },
+    });
   } catch {
-    res.json({ config: { offers: [] } });
+    res.json({ config: { offers: [], plans: {}, bannerPrices: {} } });
   }
 });
 
