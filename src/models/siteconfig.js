@@ -10,15 +10,17 @@ const siteConfigSchema = new mongoose.Schema(
     plans: {
       plus: {
         price:         { type: Number, default: 4999 },
-        originalPrice: { type: Number, default: null },  // si existe, se muestra tachado
-        promoLabel:    { type: String, default: '' },    // ej "Oferta de lanzamiento"
+        originalPrice: { type: Number, default: null },
+        promoLabel:    { type: String, default: '' },
         promoActive:   { type: Boolean, default: false },
+        promoEndDate:  { type: Date,   default: null },
       },
       premium: {
         price:         { type: Number, default: 9999 },
         originalPrice: { type: Number, default: null },
         promoLabel:    { type: String, default: '' },
         promoActive:   { type: Boolean, default: false },
+        promoEndDate:  { type: Date,   default: null },
       },
     },
 
