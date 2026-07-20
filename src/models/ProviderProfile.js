@@ -29,6 +29,24 @@ const providerProfileSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    specialty: {
+      type: String,
+      trim: true,
+      maxlength: [100, 'La especialidad no puede superar los 100 caracteres'],
+      default: '',
+    },
+    licenseNumber: {
+      type: String,
+      trim: true,
+      maxlength: [50, 'La matrícula no puede superar los 50 caracteres'],
+      default: '',
+    },
+    businessHours: {
+      type: String,
+      trim: true,
+      maxlength: [200, 'El horario no puede superar los 200 caracteres'],
+      default: '',
+    },
     category: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'ServiceCategory',

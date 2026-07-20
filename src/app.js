@@ -25,6 +25,7 @@ const siteConfigRoutes   = require('./routes/siteconfigroutes');
 const reportRoutes       = require('./routes/reportroutes');
 const app = express();
 
+app.set('trust proxy', 1);
 app.set('etag', false);
 
 if (process.env.NODE_ENV === 'production') {

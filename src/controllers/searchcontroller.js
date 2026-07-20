@@ -18,33 +18,41 @@ const searchProviders = async (req, res) => {
       
     } = req.query;
 
-    
+    const asString = (val) => (typeof val === 'string' ? val : undefined);
+    const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    const safeKeyword    = asString(keyword);
+    const safeZone       = asString(zone);
+    const safeCategory   = asString(category);
+    const safeSubcategory = asString(subcategory);
+
   const filter = {
   profession: { $exists: true, $nin: [null, '', undefined] },
   };
 
-    if (keyword) {
+    if (safeKeyword) {
+      const safePattern = escapeRegex(safeKeyword);
       filter.$or = [
-        { profession: { $regex: keyword, $options: 'i' } },
-        { bio: { $regex: keyword, $options: 'i' } },
+        { profession: { $regex: safePattern, $options: 'i' } },
+        { bio: { $regex: safePattern, $options: 'i' } },
       ];
     }
 
-    if (zone) {
-      filter.zone = { $regex: zone, $options: 'i' };
+    if (safeZone) {
+      filter.zone = { $regex: escapeRegex(safeZone), $options: 'i' };
     }
 
-    if (category) {
-      filter.category = category;
+    if (safeCategory) {
+      filter.category = safeCategory;
     }
 
     // Subcategoría: ahora se guarda como slug exacto en el perfil (ProviderProfile.subcategory)
     // en vez de buscar por texto libre en profession/bio. Esto elimina los falsos "0 resultados".
-    if (subcategory) {
-      filter.subcategory = subcategory;
+    if (safeSubcategory) {
+      filter.subcategory = safeSubcategory;
       // Si no vino category explícita, la inferimos desde la subcategoría elegida
       if (!filter.category) {
-        const cat = await ServiceCategory.findOne({ 'subcategories.slug': subcategory }).select('_id');
+        const cat = await ServiceCategory.findOne({ 'subcategories.slug': safeSubcategory }).select('_id');
         if (cat) filter.category = cat._id;
       }
     }

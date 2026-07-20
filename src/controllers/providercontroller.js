@@ -28,7 +28,7 @@ const updateMyProfile = async (req, res) => {
     }
 
     const isPremium = existing.plan === 'premium';
-    const allowedFields = ['profession', 'zone', 'bio', 'phone', 'category', 'subcategory'];
+    const allowedFields = ['profession', 'zone', 'bio', 'phone', 'category', 'subcategory', 'specialty', 'licenseNumber', 'businessHours'];
     if (isPremium) allowedFields.push('urgencyAvailable');
 
     const updates = {};
@@ -278,6 +278,9 @@ const buildPublicProfile = (profile, isAuthenticated) => {
     activeStatus:     profile.activeStatus,
     ratingAverage:    profile.ratingAverage,
     reviewsCount:     profile.reviewsCount,
+    specialty:        profile.specialty,
+    licenseNumber:    profile.licenseNumber,
+    businessHours:    profile.businessHours,
   };
 
   if (isAuthenticated) {
