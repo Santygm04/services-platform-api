@@ -10,7 +10,7 @@ const notificationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['new_seeker_in_zone', 'new_review', 'new_message', 'verification_approved', 'verification_rejected', 'plan_upgraded', 'general'],
+      enum: ['new_seeker_in_zone', 'new_review', 'new_message', 'verification_approved', 'verification_rejected', 'plan_upgraded', 'referral_credit', 'profile_incomplete', 'no_reviews_yet', 'general'],
       required: true,
     },
     title: {

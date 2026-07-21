@@ -143,6 +143,16 @@ const providerProfileSchema = new mongoose.Schema(
       default: 0,
     },
 
+    // ── Recordatorios de salud del perfil (job diario) ────
+    lastProfileReminderAt: {
+      type: Date,
+      default: null,
+    },
+    lastNoReviewsReminderAt: {
+      type: Date,
+      default: null,
+    },
+
     // ── Métricas ──────────────────────────────────────────
     viewsTracking: {
       date: {

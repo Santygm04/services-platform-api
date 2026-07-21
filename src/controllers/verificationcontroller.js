@@ -2,6 +2,7 @@ const cloudinary = require('../config/cloudinary');
 const Verification = require('../models/verification');
 const ProviderProfile = require('../models/ProviderProfile');
 const User = require('../models/User');
+const Notification = require('../models/notification');
 const { sendVerifiedProviderEmail } = require('../services/emailservice');
 
 // ── Helpers ──────────────────────────────────────────────
@@ -264,6 +265,14 @@ const submitVerification = async (req, res) => {
           .catch(err => console.error('Error enviando email verificado:', err));
       }
 
+      Notification.create({
+        userId: req.user._id,
+        type: 'verification_approved',
+        title: '✅ Identidad verificada',
+        body: 'Tu identidad fue verificada automáticamente. Ya tenés el badge de verificado en tu perfil.',
+        meta: { autoApproved: true },
+      }).catch(err => console.error('Notification create error:', err));
+
       return res.json({
         message: '✅ ¡Tu identidad fue verificada automáticamente! Ya tenés el badge verificado.',
         status: 'approved',
@@ -360,6 +369,14 @@ const approveVerification = async (req, res) => {
         .catch(err => console.error('Error enviando email verificado:', err));
     }
 
+    Notification.create({
+      userId,
+      type: 'verification_approved',
+      title: '✅ Identidad verificada',
+      body: 'Un administrador aprobó tu verificación de identidad. Ya tenés el badge de verificado.',
+      meta: { reviewedBy: req.user._id },
+    }).catch(err => console.error('Notification create error:', err));
+
     res.json({ message: 'Verificación aprobada', verification });
   } catch (error) {
     console.error('approveVerification error:', error);
@@ -384,6 +401,14 @@ const rejectVerification = async (req, res) => {
 
     await User.findByIdAndUpdate(userId, { $set: { verified: false } }, { strict: false });
     await ProviderProfile.findOneAndUpdate({ userId }, { $set: { verified: false } });
+
+    Notification.create({
+      userId,
+      type: 'verification_rejected',
+      title: '❌ Verificación rechazada',
+      body: reason ? `Tu verificación fue rechazada. Motivo: ${reason}` : 'Tu verificación fue rechazada. Podés reintentar subiendo los documentos nuevamente.',
+      meta: { reviewedBy: req.user._id, reason },
+    }).catch(err => console.error('Notification create error:', err));
 
     res.json({ message: 'Verificación rechazada', verification });
   } catch (error) {

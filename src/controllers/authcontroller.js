@@ -40,6 +40,17 @@ const awardReferralCredit = async (referrerProfileId) => {
     }
 
     await ProviderProfile.findByIdAndUpdate(referrerProfileId, { $inc: { referralCredits: creditAmount } });
+
+    const referrerProfile = await ProviderProfile.findById(referrerProfileId).select('userId');
+    if (referrerProfile?.userId) {
+      Notification.create({
+        userId: referrerProfile.userId,
+        type: 'referral_credit',
+        title: '🎁 ¡Sumaste créditos!',
+        body: `Ganaste $${creditAmount.toLocaleString('es-AR')} por un nuevo referido. Usalos como descuento en tu plan.`,
+        meta: { creditAmount },
+      }).catch(err => console.error('Notification create error:', err));
+    }
   } catch (err) {
     console.error('awardReferralCredit error:', err);
   }
@@ -687,6 +698,14 @@ const upgradePlan = async (req, res) => {
         .catch(err => console.error('sendPlanUpgradeEmail error:', err));
     }
 
+    Notification.create({
+      userId: req.user._id,
+      type: 'plan_upgraded',
+      title: `🎉 Plan actualizado a ${plan.toUpperCase()}`,
+      body: `Tu plan ${plan.toUpperCase()} está activo hasta el ${planExpiresAt.toLocaleDateString('es-AR')}.`,
+      meta: { plan, planExpiresAt },
+    }).catch(err => console.error('Notification create error:', err));
+
     res.json({
       message:      `Plan actualizado a ${plan.toUpperCase()}`,
       plan:         profile.plan,
@@ -735,6 +754,16 @@ const adminUpgradePlan = async (req, res) => {
     if (user?.email && plan !== 'free') {
       sendPlanUpgradeEmail?.(user.email, user.name, plan, profile.planExpiresAt)
         .catch(() => {});
+    }
+
+    if (plan !== 'free') {
+      Notification.create({
+        userId,
+        type: 'plan_upgraded',
+        title: `🎉 Plan actualizado a ${plan.toUpperCase()}`,
+        body: `Un administrador actualizó tu plan a ${plan.toUpperCase()}.`,
+        meta: { plan, planExpiresAt: profile.planExpiresAt },
+      }).catch(err => console.error('Notification create error:', err));
     }
 
     res.json({

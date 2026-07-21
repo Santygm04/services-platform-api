@@ -84,6 +84,11 @@ server.listen(PORT, () => {
 
   const ONE_DAY = 1000 * 60 * 60 * 24;
   setInterval(deactivateInactiveProviders, ONE_DAY);
+
+  // ── Prestadores: avisar perfil incompleto / sin reseñas ──
+  const { checkProfileHealth } = require('./src/jobs/profileHealthJob');
+  checkProfileHealth(); // ejecución inmediata al arrancar
+  setInterval(checkProfileHealth, ONE_DAY);
 });
 
   
