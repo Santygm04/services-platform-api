@@ -4,6 +4,7 @@ const ProviderProfile = require('../models/ProviderProfile');
 const User = require('../models/User');
 const Notification = require('../models/notification');
 const { sendVerifiedProviderEmail } = require('../services/emailservice');
+const { notifyAdmins } = require('../utils/adminNotify');
 
 // ── Helpers ──────────────────────────────────────────────
 const getOrCreate = async (userId) => {
@@ -285,6 +286,14 @@ const submitVerification = async (req, res) => {
     verification.aiAutoApproved = false;
     verification.aiReason       = aiAnalysis.reason;
     await verification.save();
+
+    notifyAdmins(
+      'verification_pending',
+      `Verificación pendiente: ${req.user.name}`,
+      'Envió sus documentos de identidad y necesita revisión manual.',
+      '/admin?tab=verifications',
+      { userId: req.user._id }
+    ).catch(err => console.error('notifyAdmins error:', err));
 
     return res.json({
       message: 'Solicitud enviada. La verificación automática no pudo confirmar tu identidad, así que un admin la revisará en 24-48 horas.',

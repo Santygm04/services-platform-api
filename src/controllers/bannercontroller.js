@@ -2,6 +2,7 @@ const { MercadoPagoConfig, Preference, Payment } = require('mercadopago');
 const cloudinary  = require('../config/cloudinary');
 const BannerAd    = require('../models/bannerad');
 const SiteConfig  = require('../models/siteconfig');
+const { notifyAdmins } = require('../utils/adminNotify');
 
 // ── Cliente MP ────────────────────────────────────────────
 const mp = new MercadoPagoConfig({
@@ -317,6 +318,15 @@ const bannerWebhook = async (req, res) => {
     });
 
     console.log(`✅ [BANNER WEBHOOK] Banner ${external_reference} activado`);
+
+    const activatedBanner = await BannerAd.findById(external_reference).populate('userId', 'name');
+    notifyAdmins(
+      'banner_paid',
+      `Banner pagado: ${activatedBanner?.userId?.name || 'Usuario'}`,
+      `Se activó un banner pago en ${POSITION_LABELS[activatedBanner?.position] || activatedBanner?.position || 'una posición'} por $${payment.transaction_amount?.toLocaleString('es-AR') || '—'}.`,
+      '/admin?tab=banners',
+      { bannerId: external_reference }
+    ).catch(err => console.error('notifyAdmins error:', err));
   } catch (err) {
     console.error('bannerWebhook error:', err);
   }

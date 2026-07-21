@@ -38,6 +38,7 @@ const {
   createAdminLog, getAdminLogs, deleteAdminLog,
   deleteSeekerRole, deleteProviderRole,
   getReferrals, adjustReferralCredits,
+  getAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead,
 } = require('../controllers/admincontroller');
 
 const {
@@ -76,6 +77,11 @@ router.get('/metrics',  getMetrics);
 router.get('/activity', getActivity);
 router.get('/live',     getLiveSnapshot);
 router.get('/search',   globalSearch);
+
+// ── Notificaciones del panel admin — abiertas a cualquier admin ──
+router.get('/notifications',            getAdminNotifications);
+router.patch('/notifications/:id/read', markAdminNotificationRead);
+router.patch('/notifications/read-all', markAllAdminNotificationsRead);
 
 router.get('/users/export',             exportUsers);
 router.patch('/users/bulk',             bulkAction);

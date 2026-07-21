@@ -1,6 +1,7 @@
 const Report = require('../models/report');
+const { notifyAdmins } = require('../utils/adminNotify');
 
-// POST /api/reports — crear reporte (usuarios autenticados)
+
 const createReport = async (req, res) => {
   try {
     const { targetType, targetId, reason, description } = req.body;
@@ -19,6 +20,14 @@ const createReport = async (req, res) => {
       reason,
       description: description?.trim().slice(0, 500),
     });
+
+    notifyAdmins(
+      'new_report',
+      `Nuevo reporte: ${req.user.name}`,
+      `${req.user.name} reportó ${targetType === 'provider' ? 'un perfil' : 'una reseña'} por "${reason}"${description ? ': ' + description.trim().slice(0, 80) : ''}`,
+      '/admin?tab=reports',
+      { reportId: report._id, targetType, targetId }
+    ).catch(err => console.error('notifyAdmins error:', err));
 
     res.status(201).json({ message: 'Reporte enviado. Gracias por ayudarnos a mejorar.', report });
   } catch (err) {

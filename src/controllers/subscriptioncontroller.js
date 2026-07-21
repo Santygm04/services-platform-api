@@ -5,6 +5,7 @@ const ProviderProfile = require('../models/ProviderProfile');
 const User            = require('../models/User');
 const SiteConfig       = require('../models/siteconfig');
 const { sendPlanUpgradeEmail } = require('../services/emailservice');
+const { notifyAdmins } = require('../utils/adminNotify');
 
 // ── Configuración de planes ───────────────────────────────
 // Los títulos quedan fijos acá, pero el PRECIO ahora se lee de SiteConfig
@@ -251,6 +252,13 @@ const webhook = async (req, res) => {
         await _activatePlan(userId, plan, endDate, 'manual');
         console.log(`✅ [WEBHOOK MP] Plan ${plan} activado para userId=${userId}`);
         sendPlanUpgradeEmail(user.email, user.name, plan, endDate).catch(console.error);
+        notifyAdmins(
+          'plan_paid',
+          `Nueva suscripción: ${user.name}`,
+          `${user.name} pagó el plan ${plan === 'premium' ? 'Premium' : 'Plus'}.`,
+          '/admin?tab=providers',
+          { userId, plan }
+        ).catch(err => console.error('notifyAdmins error:', err));
       }
     }
 
@@ -297,6 +305,13 @@ const webhook = async (req, res) => {
         await _activatePlan(userId, plan, endDate, 'recurring');
         console.log(`✅ [WEBHOOK MP] Plan ${plan} activado (recurring) para userId=${userId}`);
         sendPlanUpgradeEmail(user.email, user.name, plan, endDate).catch(console.error);
+        notifyAdmins(
+          'plan_paid',
+          `Nueva suscripción: ${user.name}`,
+          `${user.name} activó la suscripción recurrente del plan ${plan === 'premium' ? 'Premium' : 'Plus'}.`,
+          '/admin?tab=providers',
+          { userId, plan }
+        ).catch(err => console.error('notifyAdmins error:', err));
       }
 
       if (sub.status === 'cancelled') {

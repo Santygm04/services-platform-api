@@ -4,6 +4,7 @@ const SeekerProfile = require('../models/SeekerProfile');
 const Review = require('../models/review');
 const BannerAd = require('../models/bannerad');
 const Verification = require('../models/verification');
+const AdminNotification = require('../models/adminNotification');
 
 // ── Precios por posición (ARS/semana) — espejo de bannercontroller ──
 const SLOT_PRICES = {
@@ -964,6 +965,48 @@ const adjustReferralCredits = async (req, res) => {
   }
 };
 
+// ── GET /api/admin/notifications ─────────────────────────
+const getAdminNotifications = async (req, res) => {
+  try {
+    const { limit = 30 } = req.query;
+    const notifs = await AdminNotification.find()
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit));
+    const withRead = notifs.map(n => ({
+      ...n.toObject(),
+      read: n.readBy.some(id => id.toString() === req.user._id.toString()),
+    }));
+    const unreadCount = withRead.filter(n => !n.read).length;
+    res.json({ notifications: withRead, unreadCount });
+  } catch (err) {
+    console.error('getAdminNotifications:', err);
+    res.status(500).json({ message: 'Error interno' });
+  }
+};
+
+// ── PATCH /api/admin/notifications/:id/read ──────────────
+const markAdminNotificationRead = async (req, res) => {
+  try {
+    await AdminNotification.findByIdAndUpdate(req.params.id, { $addToSet: { readBy: req.user._id } });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ message: 'Error interno' });
+  }
+};
+
+// ── PATCH /api/admin/notifications/read-all ───────────────
+const markAllAdminNotificationsRead = async (req, res) => {
+  try {
+    await AdminNotification.updateMany(
+      { readBy: { $ne: req.user._id } },
+      { $addToSet: { readBy: req.user._id } }
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ message: 'Error interno' });
+  }
+};
+
 module.exports = {
   getMetrics, getActivity, getLiveSnapshot,
   getFeaturedProviders, toggleUrgency,
@@ -979,4 +1022,5 @@ module.exports = {
   createAdminLog, getAdminLogs, deleteAdminLog,
   deleteSeekerRole, deleteProviderRole,
   getReferrals, adjustReferralCredits,
+  getAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead,
 };
