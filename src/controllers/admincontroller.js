@@ -878,6 +878,92 @@ const deleteProviderRole = async (req, res) => {
   }
 };
 
+// ── GET /api/admin/referrals ─────────────────────────────
+// Lista prestadores con su código, créditos y cuántos referidos trajeron
+const getReferrals = async (req, res) => {
+  try {
+    const { search, page = 1, limit = 25, sort = 'credits' } = req.query;
+
+    const providers = await ProviderProfile.find({})
+      .select('userId referralCode referralCredits referredBy plan createdAt')
+      .populate('userId', 'name email')
+      .populate('referredBy', 'name email')
+      .lean();
+
+    // Contar cuántos referidos trajo cada prestador
+    const referralCounts = {};
+    providers.forEach(p => {
+      const referrerId = p.referredBy?._id?.toString();
+      if (referrerId) referralCounts[referrerId] = (referralCounts[referrerId] || 0) + 1;
+    });
+
+    let rows = providers
+      .filter(p => p.userId) // descarta perfiles fantasma
+      .map(p => ({
+        _id:             p._id,
+        name:            p.userId.name,
+        email:           p.userId.email,
+        referralCode:    p.referralCode || null,
+        referralCredits: p.referralCredits || 0,
+        referredByName:  p.referredBy?.name || null,
+        referralsCount:  referralCounts[p.userId._id.toString()] || 0,
+        plan:            p.plan,
+        createdAt:       p.createdAt,
+      }));
+
+    if (search) {
+      const s = search.toLowerCase();
+      rows = rows.filter(r =>
+        r.name?.toLowerCase().includes(s) ||
+        r.email?.toLowerCase().includes(s) ||
+        r.referralCode?.toLowerCase().includes(s)
+      );
+    }
+
+    if (sort === 'credits')        rows.sort((a, b) => b.referralCredits - a.referralCredits);
+    else if (sort === 'referrals') rows.sort((a, b) => b.referralsCount - a.referralsCount);
+    else if (sort === 'recent')    rows.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    const total    = rows.length;
+    const pageNum  = parseInt(page);
+    const limitNum = parseInt(limit);
+    const paginated = rows.slice((pageNum - 1) * limitNum, pageNum * limitNum);
+
+    // Totales globales para el header de la tab
+    const totalReferrals = rows.reduce((s, r) => s + r.referralsCount, 0);
+    const totalCredits   = rows.reduce((s, r) => s + r.referralCredits, 0);
+
+    res.json({
+      referrals: paginated,
+      pagination: { total, page: pageNum, pages: Math.ceil(total / limitNum) },
+      summary: { totalReferrals, totalCredits, totalProvidersWithCode: rows.filter(r => r.referralCode).length },
+    });
+  } catch (err) {
+    console.error('getReferrals:', err);
+    res.status(500).json({ message: 'Error interno' });
+  }
+};
+
+// ── PATCH /api/admin/referrals/:id/credits — ajuste manual de créditos ──
+const adjustReferralCredits = async (req, res) => {
+  try {
+    const { credits } = req.body;
+    if (typeof credits !== 'number' || credits < 0) {
+      return res.status(400).json({ message: 'credits debe ser un número mayor o igual a 0' });
+    }
+    const profile = await ProviderProfile.findByIdAndUpdate(
+      req.params.id,
+      { $set: { referralCredits: credits } },
+      { new: true }
+    ).populate('userId', 'name');
+    if (!profile) return res.status(404).json({ message: 'Perfil no encontrado' });
+    res.json({ message: `Créditos de ${profile.userId?.name || 'prestador'} actualizados a $${credits}`, referralCredits: profile.referralCredits });
+  } catch (err) {
+    console.error('adjustReferralCredits:', err);
+    res.status(500).json({ message: 'Error interno' });
+  }
+};
+
 module.exports = {
   getMetrics, getActivity, getLiveSnapshot,
   getFeaturedProviders, toggleUrgency,
@@ -892,4 +978,5 @@ module.exports = {
   deleteGhostProvider,
   createAdminLog, getAdminLogs, deleteAdminLog,
   deleteSeekerRole, deleteProviderRole,
+  getReferrals, adjustReferralCredits,
 };

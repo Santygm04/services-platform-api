@@ -32,6 +32,15 @@ const siteConfigSchema = new mongoose.Schema(
       profile_sidebar: { type: Number, default: 18000 },
     },
 
+    // ── Sistema de referidos — controlable desde admin ──────
+    referrals: {
+      enabled:          { type: Boolean, default: true },  // prende/apaga todo el sistema
+      creditPerReferral:{ type: Number,  default: 500 },   // ARS que gana el referidor por cada referido
+      maxCreditsPerUser:{ type: Number,  default: 0 },     // 0 = sin tope de créditos acumulables
+      minReferralsForBonus: { type: Number, default: 0 },  // 0 = sin bonus por cantidad
+      bonusAmount:      { type: Number,  default: 0 },     // ARS extra al llegar a minReferralsForBonus
+    },
+
     offers: {
       type: [
         {

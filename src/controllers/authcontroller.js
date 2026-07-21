@@ -19,6 +19,32 @@ const generateToken = (userId) =>
 
 const generateEmailToken = () => crypto.randomBytes(32).toString('hex');
 
+const SiteConfig = require('../models/siteconfig'); // ⚠️ confirmame el nombre exacto del archivo
+
+// ── Helper: acreditar referido respetando config global ───
+const awardReferralCredit = async (referrerProfileId) => {
+  try {
+    const config = await SiteConfig.findOne().select('referrals');
+    const r = config?.referrals || {};
+    if (r.enabled === false) return;
+
+    const creditAmount = r.creditPerReferral ?? 500;
+    if (!creditAmount) return;
+
+    if (r.maxCreditsPerUser) {
+      const profile = await ProviderProfile.findById(referrerProfileId).select('referralCredits');
+      if (profile && profile.referralCredits + creditAmount > r.maxCreditsPerUser) {
+        await ProviderProfile.findByIdAndUpdate(referrerProfileId, { referralCredits: r.maxCreditsPerUser });
+        return;
+      }
+    }
+
+    await ProviderProfile.findByIdAndUpdate(referrerProfileId, { $inc: { referralCredits: creditAmount } });
+  } catch (err) {
+    console.error('awardReferralCredit error:', err);
+  }
+};
+
 // ── Helper: notificar providers de la zona ────────────────
 const notifyProvidersInZone = async (seekerName, seekerZone) => {
   if (!seekerZone) return;
@@ -239,7 +265,7 @@ if (existing) {
         const referrerProfile = await ProviderProfile.findOne({ referralCode: referralCode.trim() });
         if (referrerProfile) {
           referredByUserId = referrerProfile.userId;
-          await ProviderProfile.findByIdAndUpdate(referrerProfile._id, { $inc: { referralCredits: 500 } });
+          await awardReferralCredit(referrerProfile._id);
         }
       }
       await ProviderProfile.create({ userId: existing._id, referredBy: referredByUserId });
@@ -277,10 +303,7 @@ if (existing) {
       const referrerProfile = await ProviderProfile.findOne({ referralCode: referralCode.trim() });
       if (referrerProfile) {
         referredByUserId = referrerProfile.userId;
-        // Sumar créditos al referidor ($500 ARS por referido)
-        await ProviderProfile.findByIdAndUpdate(referrerProfile._id, {
-          $inc: { referralCredits: 500 },
-        });
+        await awardReferralCredit(referrerProfile._id);
       }
     }
 
@@ -435,9 +458,7 @@ const googleCallback = async (req, res) => {
           const referrerProfile = await ProviderProfile.findOne({ referralCode: ref.trim() });
           if (referrerProfile) {
             referredByUserId = referrerProfile.userId;
-            await ProviderProfile.findByIdAndUpdate(referrerProfile._id, {
-              $inc: { referralCredits: 500 },
-            });
+            await awardReferralCredit(referrerProfile._id);
           }
         }
         await ProviderProfile.create({ userId: user._id, referredBy: referredByUserId });
@@ -446,7 +467,9 @@ const googleCallback = async (req, res) => {
       }
 
       // Email de bienvenida (Google ya verificó el email, no hace falta sendVerificationEmail)
-      sendWelcomeEmail(user.email, user.name, role).catch(() => {});
+      sendWelcomeEmail(user.email, user.name, role)
+        .then(() => console.log('✅ Welcome email (Google) enviado a', user.email))
+        .catch(err => console.error('❌ Welcome email (Google) falló:', err.message));
 
     } else {
       // Usuario existente — actualizar googleId si no tenía
@@ -472,7 +495,9 @@ const googleCallback = async (req, res) => {
         }
         user.role = 'both';
         await user.save();
-        sendWelcomeEmail(user.email, user.name, role).catch(() => {});
+        sendWelcomeEmail(user.email, user.name, role)
+          .then(() => console.log('✅ Welcome email (Google, multi-rol) enviado a', user.email))
+          .catch(err => console.error('❌ Welcome email (Google, multi-rol) falló:', err.message));
       }
     }
 
@@ -574,9 +599,7 @@ const facebookCallback = async (req, res) => {
           const referrerProfile = await ProviderProfile.findOne({ referralCode: ref.trim() });
           if (referrerProfile) {
             referredByUserId = referrerProfile.userId;
-            await ProviderProfile.findByIdAndUpdate(referrerProfile._id, {
-              $inc: { referralCredits: 500 },
-            });
+            await awardReferralCredit(referrerProfile._id);
           }
         }
         await ProviderProfile.create({ userId: user._id, referredBy: referredByUserId });

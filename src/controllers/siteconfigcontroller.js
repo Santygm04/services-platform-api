@@ -4,7 +4,7 @@ const SiteConfig = require('../models/siteconfig');
 const getPublicConfig = async (req, res) => {
   try {
     const cfg = await SiteConfig.getSingleton();
-    res.json({ plans: cfg.plans, bannerPrices: cfg.bannerPrices });
+    res.json({ plans: cfg.plans, bannerPrices: cfg.bannerPrices, referrals: cfg.referrals, offers: cfg.offers });
   } catch (error) {
     console.error('getPublicConfig error:', error);
     res.status(500).json({ message: 'Error interno del servidor' });
@@ -25,12 +25,13 @@ const adminGetConfig = async (req, res) => {
 // ── PATCH /api/config/admin — el admin edita precios/promos ──
 const adminUpdateConfig = async (req, res) => {
   try {
-    const { plans, bannerPrices, offers } = req.body;
+    const { plans, bannerPrices, offers, referrals } = req.body;
     const cfg = await SiteConfig.getSingleton();
 
     if (plans?.plus)    Object.assign(cfg.plans.plus, plans.plus);
     if (plans?.premium) Object.assign(cfg.plans.premium, plans.premium);
     if (bannerPrices)   Object.assign(cfg.bannerPrices, bannerPrices);
+    if (referrals)      Object.assign(cfg.referrals, referrals);
     if (offers !== undefined) {
       cfg.offers = offers;
       cfg.markModified('offers');

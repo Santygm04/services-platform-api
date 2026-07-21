@@ -37,6 +37,7 @@ const {
   deleteGhostProvider,
   createAdminLog, getAdminLogs, deleteAdminLog,
   deleteSeekerRole, deleteProviderRole,
+  getReferrals, adjustReferralCredits,
 } = require('../controllers/admincontroller');
 
 const {
@@ -69,6 +70,7 @@ router.use('/banners',    authorizeSection('banners'));
 router.use('/categories', authorizeSection('categorias'));
 router.use('/logs',       authorizeSection('logs'));
 router.use('/upload',     authorizeSection('banners'));
+router.use('/referrals',  authorizeSection('referrals'));
 
 router.get('/metrics',  getMetrics);
 router.get('/activity', getActivity);
@@ -157,6 +159,10 @@ router.get('/providers/:id/stats', async (req, res) => {
 router.get('/reviews',             getReviews);
 router.patch('/reviews/:id/hide',  hideReview);
 router.patch('/reviews/:id/show',  showReview);
+
+// ── Sistema de referidos ──────────────────────────────────
+router.get('/referrals',               getReferrals);
+router.patch('/referrals/:id/credits', adjustReferralCredits);
 
 router.post('/upload', uploadMemory.single('image'), async (req, res) => {
   try {
