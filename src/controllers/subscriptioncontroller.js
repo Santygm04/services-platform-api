@@ -39,8 +39,9 @@ const createPreference = async (req, res) => {
     }
 
     const user = await User.findById(req.user.id);
-    if (!user)                return res.status(404).json({ message: 'Usuario no encontrado' });
-    if (user.role !== 'provider') return res.status(403).json({ message: 'Solo los prestadores pueden suscribirse' });
+    if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
+    if (user.role !== 'provider' && user.role !== 'both')
+      return res.status(403).json({ message: 'Solo los prestadores pueden suscribirse' });
 
     const cfg = await getPlanConfig(plan);
 
@@ -104,8 +105,9 @@ const createRecurring = async (req, res) => {
     }
 
     const user = await User.findById(req.user.id);
-    if (!user)                return res.status(404).json({ message: 'Usuario no encontrado' });
-    if (user.role !== 'provider') return res.status(403).json({ message: 'Solo los prestadores pueden suscribirse' });
+    if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
+    if (user.role !== 'provider' && user.role !== 'both')
+      return res.status(403).json({ message: 'Solo los prestadores pueden suscribirse' });
 
     const cfg = await getPlanConfig(plan);
 

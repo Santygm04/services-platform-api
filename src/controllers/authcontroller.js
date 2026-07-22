@@ -10,6 +10,7 @@ const {
   sendPasswordResetEmail,
   sendPlanUpgradeEmail,   // agregar a emailservice.js si no existe
 } = require('../services/emailservice');
+const { notifyAdmins } = require('../utils/adminNotify');
 
 // ── Helpers ───────────────────────────────────────────────
 const generateToken = (userId) =>
@@ -220,6 +221,15 @@ if (existing) {
     await existing.save();
     const token = generateToken(existing._id);
     sendVerificationEmail(existing.email, existing.name, emailToken).catch(() => {});
+
+    notifyAdmins(
+      'new_seeker',
+      `Nuevo buscador: ${existing.name}`,
+      `${existing.name} agregó un perfil de buscador (ya era prestador).`,
+      '/admin?tab=seekers',
+      { userId: existing._id }
+    ).catch(err => console.error('notifyAdmins error:', err));
+
     return res.status(200).json({
       message: 'Perfil de buscador agregado. Revisá tu email para verificar tu cuenta.',
       newRole: 'seeker',
@@ -250,7 +260,14 @@ if (existing) {
       .catch(err => console.error('❌ Email falló:', err.message));
     // welcome se manda solo después de verificar el email
 
-     
+    notifyAdmins(
+      'new_seeker',
+      `Nuevo buscador: ${user.name}`,
+      `${user.name} se registró como buscador${zone?.trim() ? ` en ${zone.trim()}` : ''}.`,
+      '/admin?tab=seekers',
+      { userId: user._id }
+    ).catch(err => console.error('notifyAdmins error:', err));
+
   } catch (err) {
     console.error('registerSeeker error:', err);
     res.status(500).json({ message: 'Error interno del servidor' });
@@ -289,6 +306,15 @@ if (existing) {
     await existing.save();
     const token = generateToken(existing._id);
     sendVerificationEmail(existing.email, existing.name, emailToken).catch(() => {});
+
+    notifyAdmins(
+      'new_provider',
+      `Nuevo prestador: ${existing.name}`,
+      `${existing.name} agregó un perfil de prestador (ya era buscador).`,
+      '/admin?tab=providers',
+      { userId: existing._id }
+    ).catch(err => console.error('notifyAdmins error:', err));
+
     return res.status(200).json({
       message: 'Perfil de prestador agregado. Revisá tu email para verificar tu cuenta.',
       newRole: 'provider',
@@ -333,6 +359,15 @@ if (existing) {
     sendVerificationEmail(normalizedEmail, name.trim(), emailToken)
       .then(() => console.log('✅ Email enviado a', normalizedEmail))
       .catch(err => console.error('❌ Email falló:', err.message));
+
+    notifyAdmins(
+      'new_provider',
+      `Nuevo prestador: ${user.name}`,
+      `${user.name} se registró como prestador${referredByUserId ? ' (llegó por referido)' : ''}.`,
+      '/admin?tab=providers',
+      { userId: user._id }
+    ).catch(err => console.error('notifyAdmins error:', err));
+
   } catch (err) {
     console.error('registerProvider error:', err);
     res.status(500).json({ message: 'Error interno del servidor' });
@@ -482,6 +517,14 @@ const googleCallback = async (req, res) => {
         .then(() => console.log('✅ Welcome email (Google) enviado a', user.email))
         .catch(err => console.error('❌ Welcome email (Google) falló:', err.message));
 
+      notifyAdmins(
+        role === 'provider' ? 'new_provider' : 'new_seeker',
+        `Nuevo ${role === 'provider' ? 'prestador' : 'buscador'}: ${user.name}`,
+        `${user.name} se registró con Google como ${role === 'provider' ? 'prestador' : 'buscador'}.`,
+        role === 'provider' ? '/admin?tab=providers' : '/admin?tab=seekers',
+        { userId: user._id }
+      ).catch(err => console.error('notifyAdmins error:', err));
+
     } else {
       // Usuario existente — actualizar googleId si no tenía
       if (!user.googleId) {
@@ -509,6 +552,14 @@ const googleCallback = async (req, res) => {
         sendWelcomeEmail(user.email, user.name, role)
           .then(() => console.log('✅ Welcome email (Google, multi-rol) enviado a', user.email))
           .catch(err => console.error('❌ Welcome email (Google, multi-rol) falló:', err.message));
+
+        notifyAdmins(
+          role === 'provider' ? 'new_provider' : 'new_seeker',
+          `Nuevo ${role === 'provider' ? 'prestador' : 'buscador'}: ${user.name}`,
+          `${user.name} agregó el rol de ${role === 'provider' ? 'prestador' : 'buscador'} con Google.`,
+          role === 'provider' ? '/admin?tab=providers' : '/admin?tab=seekers',
+          { userId: user._id }
+        ).catch(err => console.error('notifyAdmins error:', err));
       }
     }
 
@@ -620,6 +671,14 @@ const facebookCallback = async (req, res) => {
 
       sendWelcomeEmail(user.email, user.name, role).catch(() => {});
 
+      notifyAdmins(
+        role === 'provider' ? 'new_provider' : 'new_seeker',
+        `Nuevo ${role === 'provider' ? 'prestador' : 'buscador'}: ${user.name}`,
+        `${user.name} se registró con Facebook como ${role === 'provider' ? 'prestador' : 'buscador'}.`,
+        role === 'provider' ? '/admin?tab=providers' : '/admin?tab=seekers',
+        { userId: user._id }
+      ).catch(err => console.error('notifyAdmins error:', err));
+
     } else {
       if (!user.facebookId) {
         user.facebookId    = fbUser.id;
@@ -642,6 +701,14 @@ const facebookCallback = async (req, res) => {
         user.role = 'both';
         await user.save();
         sendWelcomeEmail(user.email, user.name, role).catch(() => {});
+
+        notifyAdmins(
+          role === 'provider' ? 'new_provider' : 'new_seeker',
+          `Nuevo ${role === 'provider' ? 'prestador' : 'buscador'}: ${user.name}`,
+          `${user.name} agregó el rol de ${role === 'provider' ? 'prestador' : 'buscador'} con Facebook.`,
+          role === 'provider' ? '/admin?tab=providers' : '/admin?tab=seekers',
+          { userId: user._id }
+        ).catch(err => console.error('notifyAdmins error:', err));
       }
     }
 
