@@ -34,7 +34,12 @@ const updateMyProfile = async (req, res) => {
     const updates = {};
     allowedFields.forEach((field) => {
       if (req.body[field] !== undefined) {
-        updates[field] = req.body[field];
+        // category es ObjectId — nunca puede guardarse como string vacío
+        if (field === 'category' && req.body[field] === '') {
+          updates[field] = null;
+        } else {
+          updates[field] = req.body[field];
+        }
       }
     });
 
