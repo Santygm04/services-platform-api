@@ -23,6 +23,7 @@ const messageSchema = new mongoose.Schema(
       required: true,
       maxlength: 1000,
       trim: true,
+      set: (v) => (typeof v === 'string' ? v.replace(/<[^>]*>/g, '') : v),
     },
     read: {
       type: Boolean,

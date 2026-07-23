@@ -26,14 +26,39 @@ const bannerAdSchema = new mongoose.Schema(
     // Imagen del banner (URL de Cloudinary)
     imageUrl: {
       type: String,
+      trim: true,
+      maxlength: 500,
       default: null,
+      validate: {
+        validator: (v) => {
+          if (!v) return true;
+          try {
+            return ['http:', 'https:'].includes(new URL(v).protocol);
+          } catch {
+            return false;
+          }
+        },
+        message: 'imageUrl debe ser una URL http(s) válida',
+      },
     },
 
     // URL de destino al hacer clic
     linkUrl: {
       type: String,
       trim: true,
+      maxlength: [500, 'La URL no puede superar los 500 caracteres'],
       default: '',
+      validate: {
+        validator: (v) => {
+          if (!v) return true;
+          try {
+            return ['http:', 'https:'].includes(new URL(v).protocol);
+          } catch {
+            return false;
+          }
+        },
+        message: 'linkUrl debe ser una URL http(s) válida',
+      },
     },
 
     // Texto alternativo / título del anuncio
@@ -42,6 +67,7 @@ const bannerAdSchema = new mongoose.Schema(
       trim: true,
       maxlength: 100,
       default: '',
+      set: (v) => (typeof v === 'string' ? v.replace(/<[^>]*>/g, '') : v),
     },
 
     // ── Posición ──────────────────────────────────────────
@@ -113,7 +139,10 @@ const bannerAdSchema = new mongoose.Schema(
     // Notas internas (admin)
     adminNotes: {
       type: String,
+      trim: true,
+      maxlength: 300,
       default: '',
+      set: (v) => (typeof v === 'string' ? v.replace(/<[^>]*>/g, '') : v),
     },
   },
   { timestamps: true }

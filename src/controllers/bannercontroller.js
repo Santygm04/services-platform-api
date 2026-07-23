@@ -1,8 +1,30 @@
+const mongoose = require('mongoose');
 const { MercadoPagoConfig, Preference, Payment } = require('mercadopago');
 const cloudinary  = require('../config/cloudinary');
 const BannerAd    = require('../models/bannerad');
 const SiteConfig  = require('../models/siteconfig');
 const { notifyAdmins } = require('../utils/adminNotify');
+
+// ── Sanitización de texto libre ────────────────────────────
+const sanitizeText = (value, maxLength) => {
+  if (typeof value !== 'string') return '';
+  let clean = value.replace(/<[^>]*>/g, '').trim();
+  if (maxLength) clean = clean.slice(0, maxLength);
+  return clean;
+};
+
+// Solo permite http(s) — bloquea javascript:, data:, etc.
+const sanitizeUrl = (value) => {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  const trimmed = value.trim();
+  try {
+    const parsed = new URL(trimmed);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return '';
+    return trimmed.slice(0, 500);
+  } catch {
+    return '';
+  }
+};
 
 // ── Cliente MP ────────────────────────────────────────────
 const mp = new MercadoPagoConfig({
@@ -177,11 +199,15 @@ res.json({ prices: SLOT_PRICES, positions, availability });
 // ── POST /api/banners/checkout ────────────────────────────
 const createBannerCheckout = async (req, res) => {
   try {
-    const { weeks = 1, position = 'sidebar_left', linkUrl = '', title = '' } = req.body;
+    const { weeks = 1, position = 'sidebar_left' } = req.body;
+    const linkUrl = sanitizeUrl(req.body.linkUrl);
+    const title   = sanitizeText(req.body.title, 100);
     const SLOT_PRICES = await getSlotPrices();
 
     if (!SLOT_PRICES[position]) return res.status(400).json({ message: 'Posición no válida' });
-    if (weeks < 1 || weeks > 52) return res.status(400).json({ message: 'Semanas inválidas (1-52)' });
+    const numWeeks = Number(weeks);
+    if (!Number.isInteger(numWeeks) || numWeeks < 1 || numWeeks > 52)
+      return res.status(400).json({ message: 'Semanas inválidas (1-52)' });
 
     const pricePerWeek = SLOT_PRICES[position];
 
@@ -192,8 +218,8 @@ const createBannerCheckout = async (req, res) => {
     let discountLabel  = '';
 
     // Semanas cubiertas por el descuento/gratis (0 = sin límite → todas las semanas)
-    const cap = (offer?.maxWeeks > 0) ? Math.min(weeks, offer.maxWeeks) : weeks;
-    const uncapped = weeks - cap; // semanas que se cobran a precio normal
+    const cap = (offer?.maxWeeks > 0) ? Math.min(numWeeks, offer.maxWeeks) : numWeeks;
+    const uncapped = numWeeks - cap; // semanas que se cobran a precio normal
 
     if (offer?.discountType === 'percent' && offer.discountValue > 0) {
       total = Math.round(pricePerWeek * cap * (1 - offer.discountValue / 100) + pricePerWeek * uncapped);
@@ -206,7 +232,7 @@ const createBannerCheckout = async (req, res) => {
         ? ` (GRATIS las primeras ${offer.maxWeeks} sem.)`
         : ' (GRATIS)';
     } else if (offer?.discountType === 'weeks2x1') {
-      contractWeeks = weeks * 2; // paga weeks, dura el doble
+      contractWeeks = numWeeks * 2; // paga weeks, dura el doble
       discountLabel = ' (2x1)';
     }
 
@@ -335,6 +361,9 @@ const bannerWebhook = async (req, res) => {
 // ── POST /api/banners/:id/upload-image ────────────────────
 const uploadBannerImage = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'ID de banner inválido' });
+    }
     if (!req.file) return res.status(400).json({ message: 'No se recibió ningún archivo' });
     const banner = await BannerAd.findOne({ _id: req.params.id, userId: req.user._id });
     if (!banner)  return res.status(404).json({ message: 'Banner no encontrado' });
@@ -368,7 +397,9 @@ const getMyBanners = async (req, res) => {
 // ── ADMIN: GET ────────────────────────────────────────────
 const adminListBanners = async (req, res) => {
   try {
-    const { status = 'all', page = 1, limit = 20, position } = req.query;
+    const { status = 'all', position } = req.query;
+    const pageNum  = Math.max(1, parseInt(req.query.page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
     const filter = {};
     if (status !== 'all') filter.status   = status;
     if (position)         filter.position = position;
@@ -377,12 +408,12 @@ const adminListBanners = async (req, res) => {
       BannerAd.find(filter)
         .populate('userId', 'name email')
         .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(Number(limit)),
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum),
       BannerAd.countDocuments(filter),
     ]);
 
-    res.json({ banners, total, page: Number(page), pages: Math.ceil(total / limit) });
+    res.json({ banners, total, page: pageNum, pages: Math.ceil(total / limitNum) });
   } catch (error) {
     console.error('adminListBanners error:', error);
     res.status(500).json({ message: 'Error interno del servidor' });
@@ -392,19 +423,26 @@ const adminListBanners = async (req, res) => {
 // ── ADMIN: POST ───────────────────────────────────────────
 const adminCreateBanner = async (req, res) => {
   try {
-    const { position = 'sidebar_left', linkUrl = '', title = '', weeks = 4, adminNotes = '' } = req.body;
+    const { position = 'sidebar_left' } = req.body;
+    const linkUrl     = sanitizeUrl(req.body.linkUrl);
+    const title       = sanitizeText(req.body.title, 100);
+    const adminNotes  = sanitizeText(req.body.adminNotes, 300);
     const SLOT_PRICES = await getSlotPrices();
     if (!SLOT_PRICES[position]) return res.status(400).json({ message: 'Posición no válida' });
 
+    const numWeeks = Number(req.body.weeks ?? 4);
+    if (!Number.isInteger(numWeeks) || numWeeks < 1 || numWeeks > 52)
+      return res.status(400).json({ message: 'Semanas inválidas (1-52)' });
+
     const startsAt = new Date();
     const endsAt   = new Date();
-    endsAt.setDate(endsAt.getDate() + weeks * 7);
+    endsAt.setDate(endsAt.getDate() + numWeeks * 7);
 
     const banner = await BannerAd.create({
       userId: req.user._id,
       position,
       pricePerWeek: 0,
-      weeks,
+      weeks: numWeeks,
       linkUrl,
       title,
       startsAt,
@@ -422,16 +460,27 @@ const adminCreateBanner = async (req, res) => {
 };
 
 // ── ADMIN: PATCH ──────────────────────────────────────────
+const VALID_BANNER_STATUSES = ['active', 'pending_payment', 'expired', 'cancelled'];
+
 const adminUpdateBanner = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'ID de banner inválido' });
+    }
+
     const { status, linkUrl, title, adminNotes, imageUrl, position, weeks } = req.body;
     const updates = {};
 
-    if (status     !== undefined) updates.status     = status;
-    if (linkUrl    !== undefined) updates.linkUrl    = linkUrl;
-    if (title      !== undefined) updates.title      = title;
-    if (adminNotes !== undefined) updates.adminNotes = adminNotes;
-    if (imageUrl   !== undefined) updates.imageUrl   = imageUrl;
+    if (status !== undefined) {
+      if (!VALID_BANNER_STATUSES.includes(status)) {
+        return res.status(400).json({ message: 'Status inválido' });
+      }
+      updates.status = status;
+    }
+    if (linkUrl    !== undefined) updates.linkUrl    = sanitizeUrl(linkUrl);
+    if (title      !== undefined) updates.title      = sanitizeText(title, 100);
+    if (adminNotes !== undefined) updates.adminNotes = sanitizeText(adminNotes, 300);
+    if (imageUrl   !== undefined) updates.imageUrl   = sanitizeUrl(imageUrl);
 
     if (position !== undefined) {
       const SLOT_PRICES = await getSlotPrices();
@@ -441,11 +490,15 @@ const adminUpdateBanner = async (req, res) => {
     }
 
     if (weeks !== undefined) {
+      const numWeeks = Number(weeks);
+      if (!Number.isInteger(numWeeks) || numWeeks < 1 || numWeeks > 52) {
+        return res.status(400).json({ message: 'Semanas inválidas (1-52)' });
+      }
       const b = await BannerAd.findById(req.params.id);
       if (b) {
         const e = new Date(b.startsAt);
-        e.setDate(e.getDate() + weeks * 7);
-        updates.weeks  = weeks;
+        e.setDate(e.getDate() + numWeeks * 7);
+        updates.weeks  = numWeeks;
         updates.endsAt = e;
       }
     }
@@ -465,6 +518,9 @@ const adminUpdateBanner = async (req, res) => {
 // ── ADMIN: POST upload-image ──────────────────────────────
 const adminUploadBannerImage = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'ID de banner inválido' });
+    }
     if (!req.file) return res.status(400).json({ message: 'No se recibió ningún archivo' });
     const banner = await BannerAd.findById(req.params.id);
     if (!banner)  return res.status(404).json({ message: 'Banner no encontrado' });
@@ -487,6 +543,9 @@ const adminUploadBannerImage = async (req, res) => {
 // ── ADMIN: DELETE ─────────────────────────────────────────
 const adminDeleteBanner = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'ID de banner inválido' });
+    }
     const banner = await BannerAd.findByIdAndDelete(req.params.id);
     if (!banner) return res.status(404).json({ message: 'Banner no encontrado' });
     res.json({ message: 'Banner eliminado' });

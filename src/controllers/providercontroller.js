@@ -6,6 +6,28 @@ const ProfileEvent    = require('../models/profileevent');
 
 const DAILY_VIEW_LIMIT = 5;
 
+// ── Sanitización de texto libre ────────────────────────────
+// Saca tags HTML/scripts, recorta espacios y aplica límite de largo
+const sanitizeText = (value, maxLength) => {
+  if (typeof value !== 'string') return value;
+  let clean = value.replace(/<[^>]*>/g, '').trim();
+  if (maxLength) clean = clean.slice(0, maxLength);
+  return clean;
+};
+
+// Límites por campo (coinciden con los del schema + un margen razonable)
+const FIELD_LIMITS = {
+  profession:     100,
+  zone:           150,
+  specialty:      100,
+  licenseNumber:  50,
+  businessHours:  200,
+  bio:            500,
+};
+
+// Teléfono argentino/internacional razonable
+const PHONE_REGEX = /^[\d\s+\-()]{7,20}$/;
+
 const getMyProfile = async (req, res) => {
   try {
     const profile = await ProviderProfile.findOne({ userId: req.user._id });
@@ -31,16 +53,28 @@ const updateMyProfile = async (req, res) => {
     const allowedFields = ['profession', 'zone', 'bio', 'phone', 'category', 'subcategory', 'specialty', 'licenseNumber', 'businessHours'];
     if (isPremium) allowedFields.push('urgencyAvailable');
 
+    // Validar teléfono ANTES de armar updates (si vino y no está vacío, tiene que ser válido)
+    if (req.body.phone !== undefined && req.body.phone.trim() !== '' && !PHONE_REGEX.test(req.body.phone.trim())) {
+      return res.status(400).json({ message: 'El teléfono ingresado no es válido' });
+    }
+
     const updates = {};
     allowedFields.forEach((field) => {
-      if (req.body[field] !== undefined) {
-        // category es ObjectId — nunca puede guardarse como string vacío
-        if (field === 'category' && req.body[field] === '') {
-          updates[field] = null;
-        } else {
-          updates[field] = req.body[field];
-        }
+      if (req.body[field] === undefined) return;
+
+      // category es ObjectId — nunca puede guardarse como string vacío
+      if (field === 'category') {
+        updates[field] = req.body[field] === '' ? null : req.body[field];
+        return;
       }
+
+      // Campos de texto libre: sanitizar (saca HTML) + recortar al límite
+      if (FIELD_LIMITS[field] !== undefined) {
+        updates[field] = sanitizeText(req.body[field], FIELD_LIMITS[field]);
+        return;
+      }
+
+      updates[field] = req.body[field];
     });
 
     const profile = await ProviderProfile.findOneAndUpdate(

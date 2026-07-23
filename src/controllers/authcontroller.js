@@ -2,6 +2,7 @@ const User            = require('../models/User');
 const ProviderProfile = require('../models/ProviderProfile');
 const SeekerProfile   = require('../models/SeekerProfile');
 const Notification    = require('../models/notification');
+const mongoose         = require('mongoose');
 const jwt             = require('jsonwebtoken');
 const crypto          = require('crypto');
 const {
@@ -19,6 +20,13 @@ const generateToken = (userId) =>
   });
 
 const generateEmailToken = () => crypto.randomBytes(32).toString('hex');
+
+const sanitizeText = (value, maxLength = 100) => {
+  if (typeof value !== 'string') return value;
+  let clean = value.replace(/<[^>]*>/g, '').trim();
+  if (maxLength) clean = clean.slice(0, maxLength);
+  return clean;
+};
 
 const SiteConfig = require('../models/siteconfig'); // ⚠️ confirmame el nombre exacto del archivo
 
@@ -58,10 +66,12 @@ const awardReferralCredit = async (referrerProfileId) => {
 };
 
 // ── Helper: notificar providers de la zona ────────────────
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const notifyProvidersInZone = async (seekerName, seekerZone) => {
   if (!seekerZone) return;
   try {
-    const zoneWords  = seekerZone.toLowerCase().trim().split(/[\s,]+/).filter(w => w.length >= 2);
+    const zoneWords  = seekerZone.toLowerCase().trim().split(/[\s,]+/).filter(w => w.length >= 2).map(escapeRegex);
     if (!zoneWords.length) return;
 
     const zoneRegex  = new RegExp(zoneWords.join('|'), 'i');
@@ -207,12 +217,18 @@ const registerSeeker = async (req, res) => {
     if (!name || !email || !password)
       return res.status(400).json({ message: 'Todos los campos son obligatorios' });
 
+    const cleanName = sanitizeText(name, 100);
+    const cleanZone  = sanitizeText(zone, 100);
+    if (!cleanName) return res.status(400).json({ message: 'Nombre inválido' });
+
     const normalizedEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail))
+      return res.status(400).json({ message: 'Email inválido' });
     const existing = await User.findOne({ email: normalizedEmail });
 if (existing) {
   if (existing.role === 'provider') {
     const seekerExists = await SeekerProfile.findOne({ userId: existing._id });
-    if (!seekerExists) await SeekerProfile.create({ userId: existing._id, zone: zone?.trim() || '' });
+    if (!seekerExists) await SeekerProfile.create({ userId: existing._id, zone: cleanZone || '' });
     existing.role = 'both';
     existing.emailVerified = false;
     existing.pendingRoleVerification = 'provider';
@@ -241,11 +257,11 @@ if (existing) {
 }
 
     const emailToken = generateEmailToken();
-    const user       = await User.create({ name: name.trim(), email: normalizedEmail, password, role: 'seeker', emailVerificationToken: emailToken });
-    await SeekerProfile.create({ userId: user._id, zone: zone?.trim() || '' });
+    const user       = await User.create({ name: cleanName, email: normalizedEmail, password, role: 'seeker', emailVerificationToken: emailToken });
+    await SeekerProfile.create({ userId: user._id, zone: cleanZone || '' });
 
-    if (zone?.trim()) {
-      notifyProvidersInZone(name.trim(), zone.trim()).catch(() => {});
+    if (cleanZone) {
+      notifyProvidersInZone(cleanName, cleanZone).catch(() => {});
     }
 
     const token = generateToken(user._id);
@@ -255,7 +271,7 @@ if (existing) {
       user: { id: user._id, name: user.name, email: user.email, role: user.role, emailVerified: user.emailVerified },
     });
 
-    sendVerificationEmail(normalizedEmail, name.trim(), emailToken)
+    sendVerificationEmail(normalizedEmail, cleanName, emailToken)
       .then(() => console.log('✅ Email enviado a', normalizedEmail))
       .catch(err => console.error('❌ Email falló:', err.message));
     // welcome se manda solo después de verificar el email
@@ -263,7 +279,7 @@ if (existing) {
     notifyAdmins(
       'new_seeker',
       `Nuevo buscador: ${user.name}`,
-      `${user.name} se registró como buscador${zone?.trim() ? ` en ${zone.trim()}` : ''}.`,
+      `${user.name} se registró como buscador${cleanZone ? ` en ${cleanZone}` : ''}.`,
       '/admin?tab=seekers',
       { userId: user._id }
     ).catch(err => console.error('notifyAdmins error:', err));
@@ -282,7 +298,12 @@ const registerProvider = async (req, res) => {
     if (!name || !email || !password)
       return res.status(400).json({ message: 'Todos los campos son obligatorios' });
 
+    const cleanName = sanitizeText(name, 100);
+    if (!cleanName) return res.status(400).json({ message: 'Nombre inválido' });
+
     const normalizedEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail))
+      return res.status(400).json({ message: 'Email inválido' });
     const existing = await User.findOne({ email: normalizedEmail });
 if (existing) {
   if (existing.role === 'seeker') {
@@ -327,7 +348,7 @@ if (existing) {
 
     const emailToken = generateEmailToken();
     const user       = await User.create({
-      name: name.trim(),
+      name: cleanName,
       email: normalizedEmail,
       password,
       role: 'provider',
@@ -356,7 +377,7 @@ if (existing) {
       user: { id: user._id, name: user.name, email: user.email, role: user.role, emailVerified: user.emailVerified },
     });
 
-    sendVerificationEmail(normalizedEmail, name.trim(), emailToken)
+    sendVerificationEmail(normalizedEmail, cleanName, emailToken)
       .then(() => console.log('✅ Email enviado a', normalizedEmail))
       .catch(err => console.error('❌ Email falló:', err.message));
 
@@ -449,8 +470,8 @@ const googleCallback = async (req, res) => {
     let ref  = '';
     try {
       const parsed = JSON.parse(state || '{}');
-      role = parsed.role || 'seeker';
-      ref  = parsed.ref  || '';
+      role = ['provider', 'seeker'].includes(parsed.role) ? parsed.role : 'seeker';
+      ref  = typeof parsed.ref === 'string' ? parsed.ref : '';
     } catch (_) {}
 
     // 1. Intercambiar code por access_token
@@ -738,7 +759,8 @@ const upgradePlan = async (req, res) => {
     if (!['plus', 'premium'].includes(plan)) {
       return res.status(400).json({ message: 'Plan inválido. Opciones: plus, premium' });
     }
-    if (months < 1 || months > 12) {
+    const numMonths = Number(months);
+    if (!Number.isInteger(numMonths) || numMonths < 1 || numMonths > 12) {
       return res.status(400).json({ message: 'Meses inválidos (1-12)' });
     }
 
@@ -752,7 +774,7 @@ const upgradePlan = async (req, res) => {
       : now;
 
     const planExpiresAt = new Date(baseDate);
-    planExpiresAt.setMonth(planExpiresAt.getMonth() + months);
+    planExpiresAt.setMonth(planExpiresAt.getMonth() + numMonths);
 
     profile.plan          = plan;
     profile.planExpiresAt = planExpiresAt;
@@ -795,6 +817,13 @@ const adminUpgradePlan = async (req, res) => {
     if (!['free', 'plus', 'premium'].includes(plan)) {
       return res.status(400).json({ message: 'Plan inválido. Opciones: free, plus, premium' });
     }
+    const numMonths = Number(months);
+    if (plan !== 'free' && (!Number.isInteger(numMonths) || numMonths < 1 || numMonths > 12)) {
+      return res.status(400).json({ message: 'Meses inválidos (1-12)' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: 'userId inválido' });
+    }
 
     const profile = await ProviderProfile.findOne({ userId });
     if (!profile) return res.status(404).json({ message: 'Perfil no encontrado' });
@@ -809,7 +838,7 @@ const adminUpgradePlan = async (req, res) => {
         : now;
 
       const planExpiresAt = new Date(baseDate);
-      planExpiresAt.setMonth(planExpiresAt.getMonth() + months);
+      planExpiresAt.setMonth(planExpiresAt.getMonth() + numMonths);
 
       profile.plan          = plan;
       profile.planExpiresAt = planExpiresAt;

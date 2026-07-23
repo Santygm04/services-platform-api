@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Review = require('../models/review');
 const ProviderProfile = require('../models/ProviderProfile');
 const User = require('../models/User');
@@ -5,18 +6,33 @@ const Notification = require('../models/notification');
 const { sendNewReviewEmail } = require('../services/emailservice');
 const { notifyAdmins } = require('../utils/adminNotify');
 
+// ── Sanitización de texto libre ────────────────────────────
+const sanitizeText = (value, maxLength) => {
+  if (typeof value !== 'string') return value;
+  let clean = value.replace(/<[^>]*>/g, '').trim();
+  if (maxLength) clean = clean.slice(0, maxLength);
+  return clean;
+};
+
 // ── POST /api/reviews ────────────────────────────────────
 const createReview = async (req, res) => {
   try {
     const { providerId, rating, comment, alias } = req.body;
 
-    if (!providerId || !rating) {
+    if (!providerId || rating === undefined || rating === null) {
       return res.status(400).json({ message: 'providerId y rating son obligatorios' });
     }
-
-    if (rating < 1 || rating > 5) {
-      return res.status(400).json({ message: 'El rating debe ser entre 1 y 5' });
+    if (!mongoose.Types.ObjectId.isValid(providerId)) {
+      return res.status(400).json({ message: 'providerId inválido' });
     }
+
+    const numRating = Number(rating);
+    if (!Number.isInteger(numRating) || numRating < 1 || numRating > 5) {
+      return res.status(400).json({ message: 'El rating debe ser un número entero entre 1 y 5' });
+    }
+
+    const cleanComment = sanitizeText(comment, 1000);
+    const cleanAlias = sanitizeText(alias, 50);
 
     const provider = await ProviderProfile.findById(providerId);
     if (!provider) {
@@ -40,9 +56,9 @@ const createReview = async (req, res) => {
     const review = await Review.create({
       reviewerId: req.user._id,
       providerId,
-      rating,
-      comment: comment || '',
-      alias: alias || '',
+      rating: numRating,
+      comment: cleanComment,
+      alias: cleanAlias,
     });
 
     // Recalcular promedio del prestador
@@ -51,24 +67,24 @@ const createReview = async (req, res) => {
     // Notificar al prestador por email
     const providerUser = await User.findById(provider.userId);
     if (providerUser) {
-      sendNewReviewEmail(providerUser.email, providerUser.name, alias || 'Un usuario', rating, comment || '').catch(err => console.error('sendNewReviewEmail error:', err));
+      sendNewReviewEmail(providerUser.email, providerUser.name, cleanAlias || 'Un usuario', numRating, cleanComment).catch(err => console.error('sendNewReviewEmail error:', err));
 
       // Notificación in-app al prestador
       Notification.create({
         userId: provider.userId,
         type: 'new_review',
-        title: `Nueva reseña de ${alias || 'Un usuario'}`,
-        body: `Te dejaron una reseña de ${'★'.repeat(rating)}${'☆'.repeat(5 - rating)}${comment ? ': ' + comment.slice(0, 80) : ''}`,
-        meta: { reviewId: review._id, rating, providerId },
+        title: `Nueva reseña de ${cleanAlias || 'Un usuario'}`,
+        body: `Te dejaron una reseña de ${'★'.repeat(numRating)}${'☆'.repeat(5 - numRating)}${cleanComment ? ': ' + cleanComment.slice(0, 80) : ''}`,
+        meta: { reviewId: review._id, rating: numRating, providerId },
       }).catch(err => console.error('Notification create error:', err));
 
       // Notificación al panel admin
       notifyAdmins(
         'new_review',
         `Nueva reseña: ${req.user.name}`,
-        `${req.user.name} dejó ${rating}★ a ${providerUser.name}${comment ? ': ' + comment.slice(0, 80) : ''}`,
+        `${req.user.name} dejó ${numRating}★ a ${providerUser.name}${cleanComment ? ': ' + cleanComment.slice(0, 80) : ''}`,
         '/admin?tab=reviews',
-        { reviewId: review._id, rating, providerId }
+        { reviewId: review._id, rating: numRating, providerId }
       ).catch(err => console.error('notifyAdmins error:', err));
     }
 
@@ -112,9 +128,12 @@ const getProviderReviews = async (req, res) => {
 const replyToReview = async (req, res) => {
   try {
     const { reviewId } = req.params;
-    const { reply } = req.body;
+    if (!mongoose.Types.ObjectId.isValid(reviewId)) {
+      return res.status(400).json({ message: 'reviewId inválido' });
+    }
 
-    if (!reply) {
+    const cleanReply = sanitizeText(req.body.reply, 500);
+    if (!cleanReply) {
       return res.status(400).json({ message: 'La respuesta no puede estar vacía' });
     }
 
@@ -136,7 +155,7 @@ const replyToReview = async (req, res) => {
       return res.status(404).json({ message: 'Reseña no encontrada' });
     }
 
-    review.reply = reply;
+    review.reply = cleanReply;
     review.repliedAt = new Date();
     await review.save();
 
@@ -151,6 +170,9 @@ const replyToReview = async (req, res) => {
 const reportReview = async (req, res) => {
   try {
     const { reviewId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(reviewId)) {
+      return res.status(400).json({ message: 'reviewId inválido' });
+    }
 
     const review = await Review.findById(reviewId);
     if (!review) {
@@ -170,6 +192,9 @@ const reportReview = async (req, res) => {
 const deleteReview = async (req, res) => {
   try {
     const { reviewId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(reviewId)) {
+      return res.status(400).json({ message: 'reviewId inválido' });
+    }
 
     const review = await Review.findByIdAndDelete(reviewId);
     if (!review) {

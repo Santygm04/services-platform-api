@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const ProviderProfile = require('../models/ProviderProfile');
 const ServiceCategory = require('../models/servicecategory');
 
@@ -42,7 +43,7 @@ const searchProviders = async (req, res) => {
       filter.zone = { $regex: escapeRegex(safeZone), $options: 'i' };
     }
 
-    if (safeCategory) {
+    if (safeCategory && mongoose.Types.ObjectId.isValid(safeCategory)) {
       filter.category = safeCategory;
     }
 
@@ -57,8 +58,9 @@ const searchProviders = async (req, res) => {
       }
     }
 
-    if (minRating) {
-      filter.ratingAverage = { $gte: parseFloat(minRating) };
+    const parsedMinRating = parseFloat(minRating);
+    if (minRating && !Number.isNaN(parsedMinRating) && parsedMinRating >= 0 && parsedMinRating <= 5) {
+      filter.ratingAverage = { $gte: parsedMinRating };
     }
 
     if (verified === 'true') {
@@ -113,8 +115,8 @@ const searchProviders = async (req, res) => {
   const sortedInactive = allProviders.filter(p => p.activeStatus === false);
   const sorted = [...sortedActive, ...sortedInactive];
 
-    const pageNum   = parseInt(page);
-    const limitNum  = parseInt(limit);
+    const pageNum   = Math.max(1, parseInt(page) || 1);
+    const limitNum  = Math.min(50, Math.max(1, parseInt(limit) || 20));
     const skip      = (pageNum - 1) * limitNum;
 
     const FREE_LIMIT   = 5;
@@ -180,8 +182,6 @@ const getUrgent = async (req, res) => {
 
 // ── GET /api/search/by-slug/:slug ────────────────────────
 // Para URLs semánticas: /electricista-belgrano-abc123
-const mongoose = require('mongoose');
-
 const getBySlug = async (req, res) => {
   try {
     const { slug } = req.params;

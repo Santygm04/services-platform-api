@@ -23,16 +23,21 @@ const reviewSchema = new mongoose.Schema(
       trim: true,
       maxlength: [1000, 'El comentario no puede superar los 1000 caracteres'],
       default: '',
+      set: (v) => (typeof v === 'string' ? v.replace(/<[^>]*>/g, '') : v),
     },
     alias: {
       type: String,
       trim: true,
+      maxlength: [50, 'El alias no puede superar los 50 caracteres'],
       default: '',
+      set: (v) => (typeof v === 'string' ? v.replace(/<[^>]*>/g, '') : v),
     },
     reply: {
       type: String,
       trim: true,
+      maxlength: [500, 'La respuesta no puede superar los 500 caracteres'],
       default: '',
+      set: (v) => (typeof v === 'string' ? v.replace(/<[^>]*>/g, '') : v),
     },
     repliedAt: {
       type: Date,

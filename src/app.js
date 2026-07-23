@@ -55,8 +55,9 @@ app.use(cors({
 
 app.use(helmet());
 app.use((req, res, next) => {
-  mongoSanitize.sanitize(req.body);
+  if (req.body) mongoSanitize.sanitize(req.body);
   if (req.params) mongoSanitize.sanitize(req.params);
+  if (req.query) mongoSanitize.sanitize(req.query);
 
   next();
 });
@@ -71,20 +72,38 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+// Rutas de escritura con contacto directo de usuarios anónimos/no verificados
+const writeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  message: { message: 'Demasiadas solicitudes, esperá unos minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: { message: 'Demasiadas subidas, esperá unos minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 app.use('/api/auth',          authLimiter, authRoutes);
 app.use('/api/providers',     providerRoutes);
 app.use('/api/seekers',       seekerRoutes);
 app.use('/api/search',        searchRoutes);
-app.use('/api/reviews',       reviewRoutes);
-app.use('/api/reports',       reportRoutes);
+app.use('/api/reviews',       writeLimiter, reviewRoutes);
+app.use('/api/reports',       writeLimiter, reportRoutes);
 app.use('/api/categories',    categoryRoutes);
-app.use('/api/upload',        uploadRoutes);
+app.use('/api/upload',        uploadLimiter, uploadRoutes);
 app.use('/api/admin',         adminRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/verification',  verificationRoutes);
 app.use('/api/banners',       bannerRoutes);
-app.use('/api/events',        eventRoutes);
-app.use('/api/messages',      messageRoutes);
+app.use('/api/events',        writeLimiter, eventRoutes);
+app.use('/api/messages',      writeLimiter, messageRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin/analytics', analyticsRoutes);
 app.use('/api/config',          siteConfigRoutes);

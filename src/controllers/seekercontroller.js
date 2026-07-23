@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const SeekerProfile = require('../models/SeekerProfile');
 const ProviderProfile = require('../models/ProviderProfile');
 const User = require('../models/User');
@@ -34,7 +35,7 @@ const updateMyProfile = async (req, res) => {
 
     // Actualizar nombre en User
     if (name !== undefined) {
-      const trimmed = name.trim();
+      const trimmed = name.replace(/<[^>]*>/g, '').trim();
       if (trimmed.length < 2 || trimmed.length > 60) {
         return res.status(400).json({ message: 'El nombre debe tener entre 2 y 60 caracteres' });
       }
@@ -44,10 +45,11 @@ const updateMyProfile = async (req, res) => {
     // Upsert: si no existe el perfil, crearlo al mismo tiempo que actualizarlo
     const updateFields = {};
     if (zone !== undefined) {
-      if (zone.length > 80) {
+      const cleanZone = zone.replace(/<[^>]*>/g, '').trim();
+      if (cleanZone.length > 80) {
         return res.status(400).json({ message: 'La zona no puede superar los 80 caracteres' });
       }
-      updateFields.zone = zone.trim();
+      updateFields.zone = cleanZone;
     }
 
     const profile = await SeekerProfile.findOneAndUpdate(
@@ -80,6 +82,9 @@ const getFavorites = async (req, res) => {
 const addFavorite = async (req, res) => {
   try {
     const { providerId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(providerId)) {
+      return res.status(400).json({ message: 'providerId inválido' });
+    }
 
     const providerExists = await ProviderProfile.findById(providerId);
     if (!providerExists) {
@@ -111,6 +116,9 @@ const addFavorite = async (req, res) => {
 const removeFavorite = async (req, res) => {
   try {
     const { providerId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(providerId)) {
+      return res.status(400).json({ message: 'providerId inválido' });
+    }
 
     const profile = await getOrCreateProfile(req.user._id);
     profile.favorites = profile.favorites.filter(
@@ -142,6 +150,9 @@ const getContactHistory = async (req, res) => {
 const registerContact = async (req, res) => {
   try {
     const { providerId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(providerId)) {
+      return res.status(400).json({ message: 'providerId inválido' });
+    }
 
     const providerExists = await ProviderProfile.findById(providerId);
     if (!providerExists) {
@@ -182,17 +193,21 @@ const getRecentSearches = async (req, res) => {
 
 const addRecentSearch = async (req, res) => {
   try {
-    const { keyword = '', zone = '' } = req.body;
- 
-    if (!keyword.trim() && !zone.trim()) {
+    const rawKeyword = typeof req.body.keyword === 'string' ? req.body.keyword : '';
+    const rawZone     = typeof req.body.zone === 'string' ? req.body.zone : '';
+
+    const keyword = rawKeyword.replace(/<[^>]*>/g, '').trim().slice(0, 100);
+    const zone    = rawZone.replace(/<[^>]*>/g, '').trim().slice(0, 100);
+
+    if (!keyword && !zone) {
       return res.status(400).json({ message: 'Debés enviar al menos keyword o zone' });
     }
  
     const profile = await SeekerProfile.findOne({ userId: req.user._id });
     if (!profile) return res.status(404).json({ message: 'Perfil no encontrado' });
  
-    const kw = keyword.trim().toLowerCase();
-    const zn = zone.trim().toLowerCase();
+    const kw = keyword.toLowerCase();
+    const zn = zone.toLowerCase();
  
     // Eliminar duplicados de la misma combinación
     profile.recentSearches = (profile.recentSearches || []).filter(s =>
@@ -201,8 +216,8 @@ const addRecentSearch = async (req, res) => {
  
     // Insertar al principio
     profile.recentSearches.unshift({
-      keyword:    keyword.trim(),
-      zone:       zone.trim(),
+      keyword,
+      zone,
       searchedAt: new Date(),
     });
  

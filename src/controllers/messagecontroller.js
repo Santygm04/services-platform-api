@@ -1,7 +1,16 @@
+const mongoose = require('mongoose');
 const Message = require('../models/message');
 const { ConversationMeta } = require('../models/message');
 const User = require('../models/User');
 const Notification = require('../models/notification');
+
+// ── Sanitización de texto libre ────────────────────────────
+const sanitizeText = (value, maxLength) => {
+  if (typeof value !== 'string') return value;
+  let clean = value.replace(/<[^>]*>/g, '').trim();
+  if (maxLength) clean = clean.slice(0, maxLength);
+  return clean;
+};
 
 // ── Helper: obtener o crear meta de conversación ──────────────
 const getMeta = async (conversationId, userId) => {
@@ -21,8 +30,13 @@ const sendMessage = async (req, res) => {
     if (!receiverId || !content?.trim()) {
       return res.status(400).json({ message: 'receiverId y content son requeridos' });
     }
-    if (content.trim().length > 1000) {
-      return res.status(400).json({ message: 'El mensaje no puede superar los 1000 caracteres' });
+    if (!mongoose.Types.ObjectId.isValid(receiverId)) {
+      return res.status(400).json({ message: 'receiverId inválido' });
+    }
+
+    const cleanContent = sanitizeText(content, 1000);
+    if (!cleanContent) {
+      return res.status(400).json({ message: 'El mensaje no puede estar vacío' });
     }
     if (senderId.toString() === receiverId) {
       return res.status(400).json({ message: 'No podés enviarte un mensaje a vos mismo' });
@@ -39,7 +53,7 @@ const sendMessage = async (req, res) => {
       conversationId,
       sender: senderId,
       receiver: receiverId,
-      content: content.trim(),
+      content: cleanContent,
     });
 
     const populated = await Message.findById(message._id)
@@ -62,8 +76,8 @@ const sendMessage = async (req, res) => {
           type: 'new_message',
           title: `Nuevo mensaje de ${req.user.name || 'Un usuario'}`,
           body:
-            content.trim().slice(0, 100) +
-            (content.trim().length > 100 ? '...' : ''),
+            cleanContent.slice(0, 100) +
+            (cleanContent.length > 100 ? '...' : ''),
           meta: { senderId, conversationId, messageId: message._id },
         });
 

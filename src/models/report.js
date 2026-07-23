@@ -9,9 +9,19 @@ const reportSchema = new mongoose.Schema({
     enum: ['spam', 'fake', 'offensive', 'harassment', 'wrong_category', 'other'],
     required: true,
   },
-  description: { type: String, maxlength: 500 },
+  description: {
+    type: String,
+    trim: true,
+    maxlength: 500,
+    set: (v) => (typeof v === 'string' ? v.replace(/<[^>]*>/g, '') : v),
+  },
   status: { type: String, enum: ['pending', 'reviewed', 'dismissed'], default: 'pending' },
-  adminNotes: { type: String },
+  adminNotes: {
+    type: String,
+    trim: true,
+    maxlength: 500,
+    set: (v) => (typeof v === 'string' ? v.replace(/<[^>]*>/g, '') : v),
+  },
   resolvedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   resolvedAt:  { type: Date },
 }, { timestamps: true });

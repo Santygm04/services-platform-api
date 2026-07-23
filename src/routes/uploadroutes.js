@@ -27,6 +27,25 @@ const uploadMemory = multer({
 const protect_provider = [protect, authorizeRoles('provider')];
 const protect_seeker = [protect, authorizeRoles('seeker')];
 
+// ── Sanitización ────────────────────────────────────────────
+const sanitizeText = (value, maxLength) => {
+  if (typeof value !== 'string') return '';
+  return value.replace(/<[^>]*>/g, '').trim().slice(0, maxLength);
+};
+
+// Solo permite http(s) — bloquea javascript:, data:, etc.
+const sanitizeUrl = (value, maxLength = 500) => {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  const trimmed = value.trim();
+  try {
+    const parsed = new URL(trimmed);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return '';
+    return trimmed.slice(0, maxLength);
+  } catch {
+    return '';
+  }
+};
+
 // ── Helper: subir buffer a Cloudinary ─────────────────────
 const uploadToCloudinary = (fileBuffer, folder, publicId) => {
   return new Promise((resolve, reject) => {
@@ -78,8 +97,8 @@ router.post('/photo', protect_provider, uploadMemory.single('photo'), async (req
 // PATCH /api/upload/photo-url — foto de perfil por URL
 router.patch('/photo-url', protect_provider, async (req, res) => {
   try {
-    const { url } = req.body;
-    if (!url) return res.status(400).json({ message: 'URL requerida' });
+    const url = sanitizeUrl(req.body.url);
+    if (!url) return res.status(400).json({ message: 'URL inválida' });
 
     const profile = await ProviderProfile.findOneAndUpdate(
       { userId: req.user._id },
@@ -121,7 +140,7 @@ router.post('/portfolio', protect_provider, uploadMemory.single('image'), async 
     const publicId = `portfolio_${req.user._id}_${Date.now()}`;
     const result = await uploadToCloudinary(req.file.buffer, 'zonaservicios/portfolio', publicId);
 
-    const caption = req.body.caption || '';
+    const caption = sanitizeText(req.body.caption, 200);
     profile.portfolio.push({
       imageUrl: result.secure_url,
       caption,
@@ -143,8 +162,8 @@ router.post('/portfolio', protect_provider, uploadMemory.single('image'), async 
 // POST /api/upload/portfolio-url — agregar imagen al portfolio por URL
 router.post('/portfolio-url', protect_provider, async (req, res) => {
   try {
-    const { imageUrl, caption } = req.body;
-    if (!imageUrl) return res.status(400).json({ message: 'URL requerida' });
+    const imageUrl = sanitizeUrl(req.body.imageUrl);
+    if (!imageUrl) return res.status(400).json({ message: 'URL inválida' });
 
     const profile = await ProviderProfile.findOne({ userId: req.user._id });
     if (!profile) return res.status(404).json({ message: 'Perfil no encontrado' });
@@ -163,7 +182,7 @@ router.post('/portfolio-url', protect_provider, async (req, res) => {
 
     profile.portfolio.push({
       imageUrl,
-      caption: caption || '',
+      caption: sanitizeText(req.body.caption, 200),
       uploadedAt: new Date(),
     });
 
@@ -180,7 +199,7 @@ router.delete('/portfolio/:index', protect_provider, async (req, res) => {
     const idx = parseInt(req.params.index);
     const profile = await ProviderProfile.findOne({ userId: req.user._id });
     if (!profile) return res.status(404).json({ message: 'Perfil no encontrado' });
-    if (idx < 0 || idx >= profile.portfolio.length) return res.status(400).json({ message: 'Índice inválido' });
+    if (!Number.isInteger(idx) || idx < 0 || idx >= profile.portfolio.length) return res.status(400).json({ message: 'Índice inválido' });
 
     profile.portfolio.splice(idx, 1);
     await profile.save();
@@ -194,14 +213,20 @@ router.delete('/portfolio/:index', protect_provider, async (req, res) => {
 // POST /api/upload/links — agregar link externo
 router.post('/links', protect_provider, async (req, res) => {
   try {
-    const { url, label } = req.body;
-    if (!url) return res.status(400).json({ message: 'URL requerida' });
+    const url = sanitizeUrl(req.body.url);
+    if (!url) return res.status(400).json({ message: 'URL inválida' });
 
     const profile = await ProviderProfile.findOne({ userId: req.user._id });
     if (!profile) return res.status(404).json({ message: 'Perfil no encontrado' });
     if (profile.plan !== 'plus' && profile.plan !== 'premium') return res.status(403).json({ message: 'Solo disponible en Plan Plus o Premium' });
 
-    profile.links.push({ url, label: label || url });
+    const MAX_LINKS = 5; // según el tablero: "Links externos hasta 5 (Plus)"
+    if (profile.links.length >= MAX_LINKS) {
+      return res.status(403).json({ message: `Llegaste al límite de ${MAX_LINKS} links` });
+    }
+
+    const label = sanitizeText(req.body.label, 60) || url;
+    profile.links.push({ url, label });
     await profile.save();
 
     res.json({ message: 'Link agregado', links: profile.links });
@@ -216,6 +241,7 @@ router.delete('/links/:index', protect_provider, async (req, res) => {
     const idx = parseInt(req.params.index);
     const profile = await ProviderProfile.findOne({ userId: req.user._id });
     if (!profile) return res.status(404).json({ message: 'Perfil no encontrado' });
+    if (!Number.isInteger(idx) || idx < 0 || idx >= profile.links.length) return res.status(400).json({ message: 'Índice inválido' });
 
     profile.links.splice(idx, 1);
     await profile.save();
@@ -258,8 +284,8 @@ router.post('/seeker-photo', protect_seeker, uploadMemory.single('photo'), async
 // PATCH /api/upload/seeker-photo-url — foto de perfil seeker por URL
 router.patch('/seeker-photo-url', protect_seeker, async (req, res) => {
   try {
-    const { url } = req.body;
-    if (!url) return res.status(400).json({ message: 'URL requerida' });
+    const url = sanitizeUrl(req.body.url);
+    if (!url) return res.status(400).json({ message: 'URL inválida' });
 
     const profile = await SeekerProfile.findOneAndUpdate(
       { userId: req.user._id },

@@ -7,6 +7,8 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, 'El nombre es obligatorio'],
       trim: true,
+      maxlength: [100, 'El nombre no puede superar los 100 caracteres'],
+      set: (v) => (typeof v === 'string' ? v.replace(/<[^>]*>/g, '') : v),
     },
     email: {
       type: String,
@@ -14,6 +16,8 @@ const userSchema = new mongoose.Schema(
       unique: true,
       lowercase: true,
       trim: true,
+      maxlength: [254, 'El email no puede superar los 254 caracteres'],
+      match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Email inválido'],
     },
     password: {
       type: String,
@@ -26,10 +30,6 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
     emailVerified: {
-      type: Boolean,
-      default: false,
-    },
-    isSuperAdmin: {
       type: Boolean,
       default: false,
     },
@@ -56,10 +56,6 @@ const userSchema = new mongoose.Schema(
       default: 'active',
     },
     verified: {
-      type: Boolean,
-      default: false,
-    },
-    isSuperAdmin: {
       type: Boolean,
       default: false,
     },

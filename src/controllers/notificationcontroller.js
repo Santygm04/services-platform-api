@@ -1,11 +1,12 @@
-const Notification = require('../models/notification');
+const mongoose      = require('mongoose');
+const Notification  = require('../models/notification');
 
 // ── GET /api/notifications ────────────────────────────────────
 const getMyNotifications = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const skip = (page - 1) * limit;
+    const page  = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip  = (page - 1) * limit;
 
     const notifications = await Notification.find({ userId: req.user._id })
       .sort({ createdAt: -1 })
@@ -53,10 +54,15 @@ const markAllRead = async (req, res) => {
 // ── PATCH /api/notifications/:id/read ─────────────────────────
 const markOneRead = async (req, res) => {
   try {
-    await Notification.findOneAndUpdate(
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'ID de notificación inválido' });
+    }
+    const notif = await Notification.findOneAndUpdate(
       { _id: req.params.id, userId: req.user._id },
-      { $set: { read: true, readAt: new Date() } }
+      { $set: { read: true, readAt: new Date() } },
+      { new: true }
     );
+    if (!notif) return res.status(404).json({ message: 'Notificación no encontrada' });
     res.json({ message: 'Notificación marcada como leída' });
   } catch (err) {
     console.error('markOneRead error:', err);
@@ -67,7 +73,11 @@ const markOneRead = async (req, res) => {
 // ── DELETE /api/notifications/:id ─────────────────────────────
 const deleteOne = async (req, res) => {
   try {
-    await Notification.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'ID de notificación inválido' });
+    }
+    const notif = await Notification.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
+    if (!notif) return res.status(404).json({ message: 'Notificación no encontrada' });
     res.json({ message: 'Notificación eliminada' });
   } catch (err) {
     console.error('deleteOne error:', err);

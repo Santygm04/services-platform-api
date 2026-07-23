@@ -1,30 +1,45 @@
+const mongoose = require('mongoose');
 const Report = require('../models/report');
 const { notifyAdmins } = require('../utils/adminNotify');
+
+const sanitizeText = (value, maxLength) => {
+  if (typeof value !== 'string') return '';
+  let clean = value.replace(/<[^>]*>/g, '').trim();
+  if (maxLength) clean = clean.slice(0, maxLength);
+  return clean;
+};
+
+const VALID_REPORT_REASONS = ['spam', 'fake', 'offensive', 'harassment', 'wrong_category', 'other'];
 
 
 const createReport = async (req, res) => {
   try {
-    const { targetType, targetId, reason, description } = req.body;
+    const { targetType, targetId, reason } = req.body;
 
     if (!['provider', 'review'].includes(targetType)) {
       return res.status(400).json({ message: 'targetType inválido' });
     }
-    if (!reason) {
-      return res.status(400).json({ message: 'Razón requerida' });
+    if (!mongoose.Types.ObjectId.isValid(targetId)) {
+      return res.status(400).json({ message: 'targetId inválido' });
     }
+    if (!VALID_REPORT_REASONS.includes(reason)) {
+      return res.status(400).json({ message: 'Razón inválida' });
+    }
+
+    const cleanDescription = sanitizeText(req.body.description, 500);
 
     const report = await Report.create({
       reportedBy: req.user._id,
       targetType,
       targetId,
       reason,
-      description: description?.trim().slice(0, 500),
+      description: cleanDescription,
     });
 
     notifyAdmins(
       'new_report',
       `Nuevo reporte: ${req.user.name}`,
-      `${req.user.name} reportó ${targetType === 'provider' ? 'un perfil' : 'una reseña'} por "${reason}"${description ? ': ' + description.trim().slice(0, 80) : ''}`,
+      `${req.user.name} reportó ${targetType === 'provider' ? 'un perfil' : 'una reseña'} por "${reason}"${cleanDescription ? ': ' + cleanDescription.slice(0, 80) : ''}`,
       '/admin?tab=reports',
       { reportId: report._id, targetType, targetId }
     ).catch(err => console.error('notifyAdmins error:', err));
@@ -42,20 +57,22 @@ const createReport = async (req, res) => {
 // GET /api/admin/reports — listar (admin)
 const getReports = async (req, res) => {
   try {
-    const { status = 'pending', page = 1, limit = 20 } = req.query;
+    const { status = 'pending' } = req.query;
+    const pageNum  = Math.max(1, parseInt(req.query.page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
     const filter = status === 'all' ? {} : { status };
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
 
     const [reports, total] = await Promise.all([
       Report.find(filter)
         .populate('reportedBy', 'name email')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(parseInt(limit)),
+        .limit(limitNum),
       Report.countDocuments(filter),
     ]);
 
-    res.json({ reports, total, page: parseInt(page), pages: Math.ceil(total / limit) });
+    res.json({ reports, total, page: pageNum, pages: Math.ceil(total / limitNum) });
   } catch (err) {
     console.error('getReports error:', err);
     res.status(500).json({ message: 'Error al obtener reportes' });
@@ -65,7 +82,10 @@ const getReports = async (req, res) => {
 // PATCH /api/admin/reports/:id — actualizar estado (admin)
 const updateReport = async (req, res) => {
   try {
-    const { status, adminNotes } = req.body;
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'ID de reporte inválido' });
+    }
+    const { status } = req.body;
     if (!['reviewed', 'dismissed'].includes(status)) {
       return res.status(400).json({ message: 'Estado inválido' });
     }
@@ -74,7 +94,7 @@ const updateReport = async (req, res) => {
       req.params.id,
       {
         status,
-        adminNotes,
+        adminNotes: sanitizeText(req.body.adminNotes, 500),
         resolvedBy: req.user._id,
         resolvedAt: new Date(),
       },
@@ -92,7 +112,11 @@ const updateReport = async (req, res) => {
 // DELETE /api/admin/reports/:id — eliminar (admin)
 const deleteReport = async (req, res) => {
   try {
-    await Report.findByIdAndDelete(req.params.id);
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'ID de reporte inválido' });
+    }
+    const report = await Report.findByIdAndDelete(req.params.id);
+    if (!report) return res.status(404).json({ message: 'Reporte no encontrado' });
     res.json({ message: 'Reporte eliminado' });
   } catch (err) {
     res.status(500).json({ message: 'Error al eliminar reporte' });

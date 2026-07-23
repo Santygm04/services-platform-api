@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const ProviderProfile = require('../models/ProviderProfile');
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const SeekerProfile = require('../models/SeekerProfile');
 const Review = require('../models/review');
 const BannerAd = require('../models/bannerad');
@@ -249,10 +250,13 @@ const getUsers = async (req, res) => {
       else filter.role = role;
     }
     if (status) filter.status = status;
-    if (search) filter.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { email: { $regex: search, $options: 'i' } },
-    ];
+    if (search) {
+      const safeSearch = escapeRegex(String(search)).slice(0, 100);
+      filter.$or = [
+        { name: { $regex: safeSearch, $options: 'i' } },
+        { email: { $regex: safeSearch, $options: 'i' } },
+      ];
+    }
     const skip  = (parseInt(page) - 1) * parseInt(limit);
     const users = await User.find(filter)
       .select('-password -emailVerificationToken -passwordResetToken')
@@ -480,11 +484,17 @@ const createAdmin = async (req, res) => {
     if (password.length < 8) {
       return res.status(400).json({ message: 'La contraseña debe tener al menos 8 caracteres' });
     }
-    const existing = await User.findOne({ email: email.toLowerCase().trim() });
+    const normalizedEmail = email.toLowerCase().trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail))
+      return res.status(400).json({ message: 'Email inválido' });
+
+    const existing = await User.findOne({ email: normalizedEmail });
     if (existing) return res.status(400).json({ message: 'Ya existe una cuenta con ese email' });
 
+    const cleanName = typeof name === 'string' ? name.replace(/<[^>]*>/g, '').trim().slice(0, 100) : name;
+
     const admin = await User.create({
-      name, email, password,
+      name: cleanName, email: normalizedEmail, password,
       role: 'admin',
       emailVerified: true,
       isSuperAdmin: !!isSuperAdmin,
@@ -510,8 +520,17 @@ const updateAdmin = async (req, res) => {
     const admin = await User.findById(req.params.id);
     if (!admin || admin.role !== 'admin') return res.status(404).json({ message: 'Admin no encontrado' });
 
-    if (name  !== undefined) admin.name  = name;
-    if (email !== undefined) admin.email = email;
+    if (name !== undefined) {
+      admin.name = typeof name === 'string' ? name.replace(/<[^>]*>/g, '').trim().slice(0, 100) : name;
+    }
+    if (email !== undefined) {
+      const normalizedEmail = String(email).toLowerCase().trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail))
+        return res.status(400).json({ message: 'Email inválido' });
+      const emailTaken = await User.findOne({ email: normalizedEmail, _id: { $ne: admin._id } });
+      if (emailTaken) return res.status(400).json({ message: 'Ese email ya está en uso' });
+      admin.email = normalizedEmail;
+    }
     if (isSuperAdmin !== undefined) {
       if (admin._id.toString() === req.user._id.toString() && !isSuperAdmin) {
         return res.status(400).json({ message: 'No podés quitarte tu propio superadmin' });
@@ -661,8 +680,8 @@ const showReview = async (req, res) => {
 const globalSearch = async (req, res) => {
   try {
     const { q } = req.query;
-    if (!q || q.length < 2) return res.json({ users: [], providers: [] });
-    const regex = { $regex: q, $options: 'i' };
+    if (!q || typeof q !== 'string' || q.length < 2) return res.json({ users: [], providers: [] });
+    const regex = { $regex: escapeRegex(q).slice(0, 100), $options: 'i' };
     const users = await User.find({ $or: [{ name: regex }, { email: regex }] })
       .select('name email role status').limit(6);
     const providers = await ProviderProfile.find({ $or: [{ profession: regex }, { zone: regex }] })
@@ -706,12 +725,12 @@ const getAdminBanners = async (req, res) => {
 // ── PATCH /api/admin/banners/:id ─────────────────────────
 const updateAdminBanner = async (req, res) => {
   try {
-    const { status, title } = req.body;
+    const { status } = req.body;
     const allowed = ['active', 'pending_payment', 'pending_approval', 'expired', 'rejected'];
     if (status && !allowed.includes(status)) return res.status(400).json({ message: 'Estado inválido' });
     const update = {};
     if (status) update.status = status;
-    if (title)  update.title  = title;
+    if (typeof req.body.title === 'string') update.title = req.body.title.replace(/<[^>]*>/g, '').trim().slice(0, 100);
     const banner = await BannerAd.findByIdAndUpdate(req.params.id, update, { new: true });
     if (!banner) return res.status(404).json({ message: 'Banner no encontrado' });
     res.json({ message: 'Banner actualizado', banner });
@@ -753,10 +772,20 @@ const deleteGhostProvider = async (req, res) => {
 // Ahora soporta todas las posiciones con precio por posición informativo.
 const createAdminBanner = async (req, res) => {
   try {
-    const { title, imageUrl, linkUrl, position = 'sidebar_left', weeks, startsAt } = req.body;
+    const { position = 'sidebar_left', startsAt } = req.body;
+    const title    = typeof req.body.title === 'string' ? req.body.title.replace(/<[^>]*>/g, '').trim().slice(0, 100) : 'Banner admin';
+    const imageUrl = typeof req.body.imageUrl === 'string' ? req.body.imageUrl.trim() : '';
+    const linkUrl  = (() => {
+      if (typeof req.body.linkUrl !== 'string' || !req.body.linkUrl.trim()) return '';
+      try {
+        const parsed = new URL(req.body.linkUrl.trim());
+        return ['http:', 'https:'].includes(parsed.protocol) ? req.body.linkUrl.trim().slice(0, 500) : '';
+      } catch { return ''; }
+    })();
+    const weeks = Number(req.body.weeks);
 
     if (!imageUrl) return res.status(400).json({ message: 'La imagen es obligatoria' });
-    if (!weeks || weeks < 1) return res.status(400).json({ message: 'Semanas inválidas' });
+    if (!Number.isInteger(weeks) || weeks < 1 || weeks > 52) return res.status(400).json({ message: 'Semanas inválidas (1-52)' });
 
     // Validar posición
     const validPositions = Object.keys(SLOT_PRICES);
@@ -825,13 +854,14 @@ const getAdminLogs = async (req, res) => {
     const AdminLog = require('../models/AdminLog');
     
     const filter = {};
-    if (action) filter.action = { $regex: action, $options: 'i' };
+    if (action) filter.action = { $regex: escapeRegex(String(action)).slice(0, 100), $options: 'i' };
     if (search) {
+      const safeSearch = escapeRegex(String(search)).slice(0, 100);
       filter.$or = [
-        { adminName:  { $regex: search, $options: 'i' } },
-        { targetName: { $regex: search, $options: 'i' } },
-        { action:     { $regex: search, $options: 'i' } },
-        { detail:     { $regex: search, $options: 'i' } },
+        { adminName:  { $regex: safeSearch, $options: 'i' } },
+        { targetName: { $regex: safeSearch, $options: 'i' } },
+        { action:     { $regex: safeSearch, $options: 'i' } },
+        { detail:     { $regex: safeSearch, $options: 'i' } },
       ];
     }
 

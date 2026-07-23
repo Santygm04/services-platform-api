@@ -1,6 +1,7 @@
 const dns = require('dns');
 dns.setServers(['8.8.8.8', '8.8.4.4']);
 require('dotenv').config();
+const jwt = require('jsonwebtoken');
 const app = require('./src/app');
 const connectDB = require('./src/config/db');
 const { expireBanners } = require('./src/controllers/bannercontroller');
@@ -35,24 +36,40 @@ app.set('io', io);
 // 🧠 usuarios online
 const onlineUsers = new Map();
 
+// ── Autenticación del socket vía JWT ─────────────────────
+// El frontend debe conectar con: io(url, { auth: { token } })
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (!token) {
+    // Permite conexión anónima (ej. visitantes que solo navegan búsquedas),
+    // pero sin userId verificado no podrá unirse a ningún room privado.
+    socket.data.userId = null;
+    return next();
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    socket.data.userId = (decoded.id || decoded._id || decoded.userId)?.toString() || null;
+  } catch (err) {
+    socket.data.userId = null;
+  }
+  next();
+});
+
 io.on('connection', (socket) => {
   console.log('🟢 Socket conectado:', socket.id);
 
-  socket.on('join', (userId) => {
-  console.log('📥 BACK: join recibido de:', userId);
-  
-  // 🔥 FIX: Validar que userId exista
-  if (!userId) {
-    console.warn('⚠️ join recibido sin userId, ignorando');
-    return;
-  }
-  
-  const userIdStr = userId.toString();
-  socket.join(userIdStr);
-  console.log('🏠 BACK: usuario unido a room:', userIdStr);
-  onlineUsers.set(userIdStr, socket.id);
-  console.log('✅ Usuario conectado:', userIdStr);
-});
+  socket.on('join', () => {
+    const verifiedUserId = socket.data.userId;
+
+    if (!verifiedUserId) {
+      console.warn('⚠️ join intentado sin token válido, ignorando');
+      return;
+    }
+
+    socket.join(verifiedUserId);
+    onlineUsers.set(verifiedUserId, socket.id);
+    console.log('✅ Usuario conectado (verificado):', verifiedUserId);
+  });
 
   socket.on('disconnect', () => {
     for (let [userId, sockId] of onlineUsers.entries()) {

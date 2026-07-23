@@ -1,15 +1,42 @@
+const mongoose        = require('mongoose');
 const ProfileEvent    = require('../models/profileevent');
 const ProviderProfile = require('../models/ProviderProfile');
+
+const sanitizeText = (value, maxLength) => {
+  if (typeof value !== 'string') return undefined;
+  return value.replace(/<[^>]*>/g, '').trim().slice(0, maxLength);
+};
+
+// Solo dejamos pasar las claves de meta que realmente usa el frontend,
+// cada una sanitizada y acotada — meta llega sin auth, así que no confiamos en su forma.
+const sanitizeMeta = (meta) => {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return {};
+  const clean = {};
+  if (typeof meta.linkUrl === 'string') {
+    try {
+      const parsed = new URL(meta.linkUrl.trim());
+      if (['http:', 'https:'].includes(parsed.protocol)) clean.linkUrl = meta.linkUrl.trim().slice(0, 500);
+    } catch { /* URL inválida, se descarta */ }
+  }
+  if (typeof meta.linkLabel === 'string') {
+    const label = sanitizeText(meta.linkLabel, 100);
+    if (label) clean.linkLabel = label;
+  }
+  return clean;
+};
 
 // ── POST /api/events/track ─────────────────────────────────
 // Body: { providerId, eventType, meta? }
 // No requiere auth — cualquiera puede generar un click
 const trackEvent = async (req, res) => {
   try {
-    const { providerId, eventType, meta } = req.body;
+    const { providerId, eventType } = req.body;
 
     if (!providerId || !eventType) {
       return res.status(400).json({ message: 'providerId y eventType son requeridos' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(providerId)) {
+      return res.status(400).json({ message: 'providerId inválido' });
     }
 
     const validTypes = ['profile_view', 'whatsapp_click', 'phone_click', 'share_click', 'link_click'];
@@ -17,7 +44,12 @@ const trackEvent = async (req, res) => {
       return res.status(400).json({ message: 'eventType inválido' });
     }
 
-    await ProfileEvent.create({ providerId, eventType, meta: meta || {} });
+    const providerExists = await ProviderProfile.exists({ _id: providerId });
+    if (!providerExists) {
+      return res.status(404).json({ message: 'Prestador no encontrado' });
+    }
+
+    await ProfileEvent.create({ providerId, eventType, meta: sanitizeMeta(req.body.meta) });
     res.status(201).json({ ok: true });
   } catch (err) {
     console.error('trackEvent error:', err);
