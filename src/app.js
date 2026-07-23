@@ -103,7 +103,7 @@ app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/verification',  verificationRoutes);
 app.use('/api/banners',       bannerRoutes);
 app.use('/api/events',        writeLimiter, eventRoutes);
-app.use('/api/messages',      writeLimiter, messageRoutes);
+app.use('/api/messages',      messageRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin/analytics', analyticsRoutes);
 app.use('/api/config',          siteConfigRoutes);
