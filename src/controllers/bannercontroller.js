@@ -41,7 +41,12 @@ const DEFAULT_SLOT_PRICES = {
 // Devuelve el objeto de precios reales, mezclando con los defaults
 const getSlotPrices = async () => {
   const cfg = await SiteConfig.getSingleton();
-  return { ...DEFAULT_SLOT_PRICES, ...(cfg.bannerPrices || {}) };
+  const saved = cfg.bannerPrices || {};
+  const merged = { ...DEFAULT_SLOT_PRICES };
+  for (const [key, val] of Object.entries(saved)) {
+    if (val && Number(val) > 0) merged[key] = Number(val);
+  }
+  return merged;
 };
 
 const POSITION_LABELS = {
