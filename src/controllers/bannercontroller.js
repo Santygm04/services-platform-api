@@ -204,7 +204,12 @@ const createBannerCheckout = async (req, res) => {
     const title   = sanitizeText(req.body.title, 100);
     const SLOT_PRICES = await getSlotPrices();
 
-    if (!SLOT_PRICES[position]) return res.status(400).json({ message: 'Posición no válida' });
+    // Normalizar posiciones legacy antes de validar
+const POSITION_ALIAS = { home_sidebar: 'home_top', mobile: 'sidebar', sidebar_left: 'sidebar', sidebar_right: 'sidebar', featured: 'home_featured' };
+const normalizedPosition = POSITION_ALIAS[position] || position;
+if (SLOT_PRICES[normalizedPosition] === undefined) return res.status(400).json({ message: 'Posición no válida' });
+updates.position = normalizedPosition;
+updates.pricePerWeek = SLOT_PRICES[normalizedPosition];
     const numWeeks = Number(weeks);
     if (!Number.isInteger(numWeeks) || numWeeks < 1 || numWeeks > 52)
       return res.status(400).json({ message: 'Semanas inválidas (1-52)' });
@@ -428,7 +433,7 @@ const adminCreateBanner = async (req, res) => {
     const title       = sanitizeText(req.body.title, 100);
     const adminNotes  = sanitizeText(req.body.adminNotes, 300);
     const SLOT_PRICES = await getSlotPrices();
-    if (!SLOT_PRICES[position]) return res.status(400).json({ message: 'Posición no válida' });
+    if (SLOT_PRICES[position] === undefined) return res.status(400).json({ message: 'Posición no válida' });
 
     const numWeeks = Number(req.body.weeks ?? 4);
     if (!Number.isInteger(numWeeks) || numWeeks < 1 || numWeeks > 52)
@@ -484,7 +489,7 @@ const adminUpdateBanner = async (req, res) => {
 
     if (position !== undefined) {
       const SLOT_PRICES = await getSlotPrices();
-      if (!SLOT_PRICES[position]) return res.status(400).json({ message: 'Posición no válida' });
+      if (SLOT_PRICES[position] === undefined) return res.status(400).json({ message: 'Posición no válida' });
       updates.position    = position;
       updates.pricePerWeek = SLOT_PRICES[position];
     }

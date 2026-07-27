@@ -119,6 +119,7 @@ const deleteReport = async (req, res) => {
     if (!report) return res.status(404).json({ message: 'Reporte no encontrado' });
     res.json({ message: 'Reporte eliminado' });
   } catch (err) {
+    console.error('deleteReport error:', err);
     res.status(500).json({ message: 'Error al eliminar reporte' });
   }
 };

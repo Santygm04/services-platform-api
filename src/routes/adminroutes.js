@@ -198,12 +198,27 @@ const ServiceCategory = require('../models/servicecategory');
 
 const sanitizeCategoryText = (v, max) => (typeof v === 'string' ? v.replace(/<[^>]*>/g, '').trim().slice(0, max) : v);
 
+// Acepta subcategorías como strings o como objetos {name, slug} — limita cantidad y longitud
+const sanitizeSubcategories = (arr) => {
+  if (!Array.isArray(arr)) return [];
+  return arr.slice(0, 50).map((s) => {
+    if (typeof s === 'string') return sanitizeCategoryText(s, 60);
+    if (s && typeof s === 'object') {
+      return {
+        name: sanitizeCategoryText(s.name, 60),
+        slug: sanitizeCategoryText(s.slug, 60),
+      };
+    }
+    return null;
+  }).filter(Boolean);
+};
+
 router.post('/categories', async (req, res) => {
   try {
     const name = sanitizeCategoryText(req.body.name, 60);
     const slug = sanitizeCategoryText(req.body.slug, 60);
     const icon = sanitizeCategoryText(req.body.icon, 10) || '🔧';
-    const subcategories = Array.isArray(req.body.subcategories) ? req.body.subcategories : [];
+    const subcategories = sanitizeSubcategories(req.body.subcategories);
 
     if (!name || !slug) return res.status(400).json({ message: 'name y slug son obligatorios' });
 
@@ -211,7 +226,10 @@ router.post('/categories', async (req, res) => {
     if (existing) return res.status(400).json({ message: 'Ya existe una categoría con ese slug' });
     const cat = await ServiceCategory.create({ name, slug, icon, subcategories, active: true });
     res.status(201).json({ category: cat });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) {
+    console.error('createCategory:', err);
+    res.status(500).json({ message: 'Error al crear categoría' });
+  }
 });
 
 router.patch('/categories/:id', validateObjectId(), async (req, res) => {
@@ -221,12 +239,15 @@ router.patch('/categories/:id', validateObjectId(), async (req, res) => {
     if (req.body.slug !== undefined)  update.slug  = sanitizeCategoryText(req.body.slug, 60);
     if (req.body.icon !== undefined)  update.icon  = sanitizeCategoryText(req.body.icon, 10);
     if (req.body.active !== undefined) update.active = !!req.body.active;
-    if (Array.isArray(req.body.subcategories)) update.subcategories = req.body.subcategories;
+    if (req.body.subcategories !== undefined) update.subcategories = sanitizeSubcategories(req.body.subcategories);
 
     const cat = await ServiceCategory.findByIdAndUpdate(req.params.id, update, { new: true });
     if (!cat) return res.status(404).json({ message: 'Categoría no encontrada' });
     res.json({ category: cat });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) {
+    console.error('updateCategory:', err);
+    res.status(500).json({ message: 'Error al actualizar categoría' });
+  }
 });
 
 router.delete('/categories/:id', validateObjectId(), async (req, res) => {

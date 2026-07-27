@@ -9,6 +9,7 @@ const {
 } = require('../controllers/siteconfigcontroller');
 
 router.get('/', getPublicConfig); // pública — sin auth
+router.get('/public', getPublicConfig); // alias — algún caller le pega a /config/public directo
 
 router.get('/admin',   protect, authorizeRoles('admin'), authorizeSection('config'), adminGetConfig);
 router.patch('/admin', protect, authorizeRoles('admin'), authorizeSection('config'), adminUpdateConfig);
