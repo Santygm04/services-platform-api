@@ -28,6 +28,52 @@ const mp = new MercadoPagoConfig({
 });
 
 // ─────────────────────────────────────────────────────────
+// POST /api/subscriptions/activate-free
+// Activación directa cuando el plan tiene precio $0 (oferta activa) — no pasa por MP
+// ─────────────────────────────────────────────────────────
+const activateFreePlan = async (req, res) => {
+  try {
+    const { plan = 'plus' } = req.body;
+
+    if (!PLAN_TITLES[plan]) {
+      return res.status(400).json({ message: 'Plan inválido. Opciones: plus, premium' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
+    if (user.role !== 'provider' && user.role !== 'both')
+      return res.status(403).json({ message: 'Solo los prestadores pueden suscribirse' });
+
+    // ── Nunca confiar en el precio del frontend: se vuelve a leer de SiteConfig ──
+    const cfg = await getPlanConfig(plan);
+    if (cfg.price > 0) {
+      return res.status(400).json({ message: 'Este plan ya no está gratis. Recargá la página.' });
+    }
+
+    const now     = new Date();
+    const endDate = new Date(now);
+    endDate.setMonth(endDate.getMonth() + 1);
+
+    await _activatePlan(user._id, plan, endDate, 'manual');
+
+    console.log(`✅ [FREE PLAN] Plan ${plan} activado gratis para userId=${user._id}`);
+    sendPlanUpgradeEmail(user.email, user.name, plan, endDate).catch(console.error);
+    notifyAdmins(
+      'plan_paid',
+      `Nueva activación gratis: ${user.name}`,
+      `${user.name} activó el plan ${plan === 'premium' ? 'Premium' : 'Plus'} gratis (oferta).`,
+      '/admin?tab=providers',
+      { userId: user._id, plan }
+    ).catch(err => console.error('notifyAdmins error:', err));
+
+    res.json({ message: 'Plan activado', plan });
+  } catch (err) {
+    console.error('activateFreePlan error:', err);
+    res.status(500).json({ message: 'Error al activar el plan gratis' });
+  }
+};
+
+// ─────────────────────────────────────────────────────────
 // POST /api/subscriptions/create-preference
 // ─────────────────────────────────────────────────────────
 const createPreference = async (req, res) => {
@@ -432,6 +478,7 @@ async function _deactivatePlan(userId) {
 module.exports = {
   createPreference,
   createRecurring,
+  activateFreePlan,
   webhook,
   cancelSubscription,
   getMySubscription,

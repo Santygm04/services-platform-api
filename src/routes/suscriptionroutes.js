@@ -3,6 +3,7 @@ const router  = express.Router();
 const {
   createPreference,
   createRecurring,
+  activateFreePlan,
   webhook,
   cancelSubscription,
   getMySubscription,
@@ -39,6 +40,7 @@ router.get('/redirect/pending', (req, res) => {
 // ── Rutas protegidas ──────────────────────────────────────
 router.post('/create-preference', protect, createPreference);
 router.post('/create-recurring',  protect, createRecurring);
+router.post('/activate-free',     protect, activateFreePlan);
 router.post('/cancel',            protect, cancelSubscription);
 router.get('/me',                 protect, getMySubscription);
 router.get('/history',            protect, getPaymentHistory);
