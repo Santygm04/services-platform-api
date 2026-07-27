@@ -208,8 +208,6 @@ const createBannerCheckout = async (req, res) => {
 const POSITION_ALIAS = { home_sidebar: 'home_top', mobile: 'sidebar', sidebar_left: 'sidebar', sidebar_right: 'sidebar', featured: 'home_featured' };
 const normalizedPosition = POSITION_ALIAS[position] || position;
 if (SLOT_PRICES[normalizedPosition] === undefined) return res.status(400).json({ message: 'Posición no válida' });
-updates.position = normalizedPosition;
-updates.pricePerWeek = SLOT_PRICES[normalizedPosition];
     const numWeeks = Number(weeks);
     if (!Number.isInteger(numWeeks) || numWeeks < 1 || numWeeks > 52)
       return res.status(400).json({ message: 'Semanas inválidas (1-52)' });
