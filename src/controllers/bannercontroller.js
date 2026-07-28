@@ -100,7 +100,9 @@ const getActiveBanners = async (req, res) => {
       if (positionBanners.length > 0) {
         const paid  = positionBanners.filter(b => b.amountPaid > 0);
         const admin = positionBanners.filter(b => b.amountPaid === 0);
-        const pool  = paid.length > 0 ? paid : admin;
+        // ── Se muestran TODOS los banners activos de la posición ──
+        // Los pagos van primero en la cola de rotación, los de admin completan atrás
+        const pool = [...paid, ...admin];
 
         // ── Ordenar por plan del dueño del banner ──
         // Para cada banner necesitamos saber el plan del usuario
@@ -147,7 +149,7 @@ const sorted = [
         result[pos] = {
           banners:     sorted,
           isDefault:   false,
-          totalActive: paid.length,
+          totalActive: positionBanners.length,
         };
       } else {
         result[pos] = null;
