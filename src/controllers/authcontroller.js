@@ -563,7 +563,17 @@ const googleCallback = async (req, res) => {
         // Crear el perfil del rol nuevo si no existe
         if (role === 'provider') {
           const exists = await ProviderProfile.findOne({ userId: user._id });
-          if (!exists) await ProviderProfile.create({ userId: user._id });
+          if (!exists) {
+            let referredByUserId = null;
+            if (ref?.trim()) {
+              const referrerProfile = await ProviderProfile.findOne({ referralCode: ref.trim() });
+              if (referrerProfile) {
+                referredByUserId = referrerProfile.userId;
+                await awardReferralCredit(referrerProfile._id);
+              }
+            }
+            await ProviderProfile.create({ userId: user._id, referredBy: referredByUserId });
+          }
         } else if (role === 'seeker') {
           const exists = await SeekerProfile.findOne({ userId: user._id });
           if (!exists) await SeekerProfile.create({ userId: user._id });
@@ -714,7 +724,17 @@ const facebookCallback = async (req, res) => {
       if (currentRole !== 'admin' && currentRole !== 'both' && currentRole !== role) {
         if (role === 'provider') {
           const exists = await ProviderProfile.findOne({ userId: user._id });
-          if (!exists) await ProviderProfile.create({ userId: user._id });
+          if (!exists) {
+            let referredByUserId = null;
+            if (ref?.trim()) {
+              const referrerProfile = await ProviderProfile.findOne({ referralCode: ref.trim() });
+              if (referrerProfile) {
+                referredByUserId = referrerProfile.userId;
+                await awardReferralCredit(referrerProfile._id);
+              }
+            }
+            await ProviderProfile.create({ userId: user._id, referredBy: referredByUserId });
+          }
         } else if (role === 'seeker') {
           const exists = await SeekerProfile.findOne({ userId: user._id });
           if (!exists) await SeekerProfile.create({ userId: user._id });
