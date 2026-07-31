@@ -347,19 +347,43 @@ const getNearbyActivity = async (req, res) => {
     const regexSource = zoneWords.length ? zoneWords.join('|') : providerZone;
     const zoneRegex = new RegExp(regexSource, 'i');
 
-    const allSeekers = await SeekerProfile.find({ zone: { $regex: zoneRegex } })
-      .populate('userId', 'name emailVerified createdAt status')
+    // Fix #128b: cuentas "both" sin SeekerProfile.zone completo quedan afuera
+    // del filtro de zona a nivel DB. Traemos todos los perfiles de buscador
+    // y resolvemos zona con fallback al ProviderProfile cuando sea "both"
+    // y su propia zona esté vacía.
+    const allSeekerDocs = await SeekerProfile.find({})
+      .populate('userId', 'name emailVerified createdAt status role')
       .select('zone favorites userId profilePhoto')
-      .limit(50);
+      .limit(300);
 
-    const filtered = allSeekers.filter(s =>
-      s.userId &&
-      s.userId.status !== 'blocked' &&
-      s.userId.status !== 'inactive'
+    const bothEmptyZoneUserIds = allSeekerDocs
+      .filter(s => s.userId?.role === 'both' && !(s.zone || '').trim())
+      .map(s => s.userId._id);
+
+    const fallbackProviderZones = bothEmptyZoneUserIds.length
+      ? await ProviderProfile.find({ userId: { $in: bothEmptyZoneUserIds } }).select('userId zone')
+      : [];
+    const fallbackZoneByUserId = new Map(
+      fallbackProviderZones.map(p => [p.userId.toString(), (p.zone || '').toLowerCase().trim()])
     );
 
-    const scored = filtered.map(s => {
-      const seekerZone   = (s.zone || '').toLowerCase().trim();
+    const withEffectiveZone = allSeekerDocs
+      .filter(s =>
+        s.userId &&
+        s.userId.status !== 'blocked' &&
+        s.userId.status !== 'inactive'
+      )
+      .map(s => {
+        const ownZone = (s.zone || '').toLowerCase().trim();
+        const effectiveZone = ownZone || fallbackZoneByUserId.get(s.userId._id.toString()) || '';
+        return { s, effectiveZone };
+      })
+      .filter(({ effectiveZone }) =>
+        effectiveZone === providerZone || zoneWords.some(w => effectiveZone.includes(w))
+      );
+
+    const scored = withEffectiveZone.map(({ s, effectiveZone }) => {
+      const seekerZone   = effectiveZone;
       let score          = 0;
       const label        = [];
       const profileIdStr = profile._id.toString();
@@ -409,22 +433,47 @@ const getNearbySeekersForMe = async (req, res) => {
     const regexSource2 = zoneWords.length ? zoneWords.join('|') : providerZone;
     const zoneRegex    = new RegExp(regexSource2, 'i');
 
-    const allSeekers = await SeekerProfile.find({ zone: { $regex: zoneRegex } })
-      .populate('userId', 'name emailVerified createdAt status')
+    // Fix #128b: cuentas "both" que nunca completaron el ZoneSelector del
+    // lado buscador tienen SeekerProfile.zone vacío, así que el filtro de
+    // zona a nivel DB las descarta de entrada. Traemos todos los perfiles
+    // de buscador y resolvemos la zona con fallback al ProviderProfile
+    // cuando la propia esté vacía y el rol sea "both".
+    const allSeekerDocs = await SeekerProfile.find({})
+      .populate('userId', 'name emailVerified createdAt status role')
       .select('zone favorites userId profilePhoto')
-      .limit(60);
+      .limit(300);
 
-    const filtered = allSeekers.filter(s =>
-      s.userId &&
-      s.userId.status !== 'blocked'  &&
-      s.userId.status !== 'inactive' &&
-      s.userId.emailVerified
+    const bothEmptyZoneUserIds = allSeekerDocs
+      .filter(s => s.userId?.role === 'both' && !(s.zone || '').trim())
+      .map(s => s.userId._id);
+
+    const fallbackProviderZones = bothEmptyZoneUserIds.length
+      ? await ProviderProfile.find({ userId: { $in: bothEmptyZoneUserIds } }).select('userId zone')
+      : [];
+    const fallbackZoneByUserId = new Map(
+      fallbackProviderZones.map(p => [p.userId.toString(), (p.zone || '').toLowerCase().trim()])
     );
+
+    const withEffectiveZone = allSeekerDocs
+      .filter(s =>
+        s.userId &&
+        s.userId.status !== 'blocked'  &&
+        s.userId.status !== 'inactive' &&
+        s.userId.emailVerified
+      )
+      .map(s => {
+        const ownZone = (s.zone || '').toLowerCase().trim();
+        const effectiveZone = ownZone || fallbackZoneByUserId.get(s.userId._id.toString()) || '';
+        return { s, effectiveZone };
+      })
+      .filter(({ effectiveZone }) =>
+        effectiveZone === providerZone || zoneWords.some(w => effectiveZone.includes(w))
+      );
 
     const profileIdStr = profile._id.toString();
 
-    const scored = filtered.map(s => {
-      const seekerZone = (s.zone || '').toLowerCase().trim();
+    const scored = withEffectiveZone.map(({ s, effectiveZone }) => {
+      const seekerZone = effectiveZone;
       let score        = 0;
       const labels     = [];
 
