@@ -433,38 +433,37 @@ const getNearbySeekersForMe = async (req, res) => {
     const regexSource2 = zoneWords.length ? zoneWords.join('|') : providerZone;
     const zoneRegex    = new RegExp(regexSource2, 'i');
 
-    // Fix #128b: cuentas "both" que nunca completaron el ZoneSelector del
-    // lado buscador tienen SeekerProfile.zone vacío, así que el filtro de
-    // zona a nivel DB las descarta de entrada. Traemos todos los perfiles
-    // de buscador y resolvemos la zona con fallback al ProviderProfile
-    // cuando la propia esté vacía y el rol sea "both".
-    const allSeekerDocs = await SeekerProfile.find({})
-      .populate('userId', 'name emailVerified createdAt status role')
-      .select('zone favorites userId profilePhoto')
-      .limit(300);
+    // Fix #128c: arrancamos desde User (existe siempre), no desde
+    // SeekerProfile (puede no existir para cuentas "both" que nunca
+    // abrieron su dashboard de buscador). Para esos casos, resolvemos
+    // la zona con la del ProviderProfile.
+    const candidateUsers = await User.find({
+      role:          { $in: ['seeker', 'both'] },
+      status:        { $nin: ['blocked', 'inactive'] },
+      emailVerified: true,
+    }).select('name createdAt role');
 
-    const bothEmptyZoneUserIds = allSeekerDocs
-      .filter(s => s.userId?.role === 'both' && !(s.zone || '').trim())
-      .map(s => s.userId._id);
+    const candidateUserIds = candidateUsers.map(u => u._id);
 
-    const fallbackProviderZones = bothEmptyZoneUserIds.length
-      ? await ProviderProfile.find({ userId: { $in: bothEmptyZoneUserIds } }).select('userId zone')
-      : [];
-    const fallbackZoneByUserId = new Map(
-      fallbackProviderZones.map(p => [p.userId.toString(), (p.zone || '').toLowerCase().trim()])
+    const [seekerDocs, providerDocsForBoth] = await Promise.all([
+      SeekerProfile.find({ userId: { $in: candidateUserIds } })
+        .select('zone favorites userId profilePhoto'),
+      ProviderProfile.find({ userId: { $in: candidateUserIds } })
+        .select('userId zone'),
+    ]);
+
+    const seekerByUserId = new Map(seekerDocs.map(s => [s.userId.toString(), s]));
+    const providerZoneByUserId = new Map(
+      providerDocsForBoth.map(p => [p.userId.toString(), (p.zone || '').toLowerCase().trim()])
     );
 
-    const withEffectiveZone = allSeekerDocs
-      .filter(s =>
-        s.userId &&
-        s.userId.status !== 'blocked'  &&
-        s.userId.status !== 'inactive' &&
-        s.userId.emailVerified
-      )
-      .map(s => {
-        const ownZone = (s.zone || '').toLowerCase().trim();
-        const effectiveZone = ownZone || fallbackZoneByUserId.get(s.userId._id.toString()) || '';
-        return { s, effectiveZone };
+    const withEffectiveZone = candidateUsers
+      .map(u => {
+        const uid = u._id.toString();
+        const seekerDoc = seekerByUserId.get(uid) || null;
+        const ownZone = (seekerDoc?.zone || '').toLowerCase().trim();
+        const effectiveZone = ownZone || providerZoneByUserId.get(uid) || '';
+        return { u, seekerDoc, effectiveZone };
       })
       .filter(({ effectiveZone }) =>
         effectiveZone === providerZone || zoneWords.some(w => effectiveZone.includes(w))
@@ -472,7 +471,7 @@ const getNearbySeekersForMe = async (req, res) => {
 
     const profileIdStr = profile._id.toString();
 
-    const scored = withEffectiveZone.map(({ s, effectiveZone }) => {
+    const scored = withEffectiveZone.map(({ u, seekerDoc, effectiveZone }) => {
       const seekerZone = effectiveZone;
       let score        = 0;
       const labels     = [];
@@ -480,23 +479,22 @@ const getNearbySeekersForMe = async (req, res) => {
       if (seekerZone === providerZone)                                  { score += 2; labels.push('zona exacta'); }
       else if (zoneWords.some(w => seekerZone.includes(w)))             { score += 1; labels.push('zona similar'); }
 
-      if (Array.isArray(s.favorites) && s.favorites.some(f => f.toString() === profileIdStr)) {
+      const favorites = seekerDoc?.favorites || [];
+      if (Array.isArray(favorites) && favorites.some(f => f.toString() === profileIdStr)) {
         score += 3; labels.push('te tiene en favoritos');
       }
 
-      console.log('seeker', s.userId.name, 'hasFavorited:', labels.includes('te tiene en favoritos'), 'favorites:', s.favorites);
-
       return {
-        _id:             s._id,
-        userId:          s.userId._id,
-        name:            s.userId.name,
-        zone:            s.zone,
-        profilePhoto:    s.profilePhoto || '',
-        memberSince:     s.userId.createdAt,
+        _id:             seekerDoc?._id || u._id,
+        userId:          u._id,
+        name:            u.name,
+        zone:            seekerDoc?.zone || '',
+        profilePhoto:    seekerDoc?.profilePhoto || '',
+        memberSince:     u.createdAt,
         relevanceScore:  score,
         relevanceLabels: labels,
         hasFavorited:    labels.includes('te tiene en favoritos'),
-        emailVerified:   s.userId.emailVerified || false,
+        emailVerified:   true,
       };
     });
 
