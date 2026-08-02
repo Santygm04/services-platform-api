@@ -28,7 +28,7 @@ router.get('/stats/public', getPublicStats);
 router.get('/me/profile',         protect, authorizeRoles('provider'), getMyProfile);
 router.patch('/me/profile',       protect, authorizeRoles('provider'), requireEmailVerified, updateMyProfile);
 router.get('/me/stats',           protect, authorizeRoles('provider'), getMyStats);
-router.get('/me/nearby-seekers',  protect, authorizeRoles('provider'), getNearbySeekersForMe);
+router.use(protect, authorizeRoles('seeker'));
 
 // ── Toggle activo/inactivo ────────────────────────────────
 router.patch('/me/active-status', protect, authorizeRoles('provider'), toggleActiveStatus);

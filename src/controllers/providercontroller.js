@@ -437,11 +437,12 @@ const getNearbySeekersForMe = async (req, res) => {
     // SeekerProfile (puede no existir para cuentas "both" que nunca
     // abrieron su dashboard de buscador). Para esos casos, resolvemos
     // la zona con la del ProviderProfile.
-    const candidateUsers = await User.find({
-      role:          { $in: ['seeker', 'both'] },
-      status:        { $nin: ['blocked', 'inactive'] },
-      emailVerified: true,
-    }).select('name createdAt role');
+   const candidateUsers = await User.find({
+  _id:           { $ne: req.user._id },   // no incluir al propio prestador que consulta
+  role:          { $in: ['seeker', 'both'] },
+  status:        { $nin: ['blocked', 'inactive'] },
+  emailVerified: true,
+}).select('name createdAt role');
 
     const candidateUserIds = candidateUsers.map(u => u._id);
 
