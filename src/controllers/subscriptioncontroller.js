@@ -22,10 +22,35 @@ const getPlanConfig = async (plan) => {
   return { price: price ?? (plan === 'premium' ? 9999 : 4999), title: PLAN_TITLES[plan] };
 };
 
+const crypto = require('crypto');
+
 // ── Cliente MP ────────────────────────────────────────────
 const mp = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN,
 });
+
+// ── Verifica que el webhook realmente venga de MercadoPago ──
+const verifyMpSignature = (req) => {
+  const signature = req.headers['x-signature'];
+  const requestId = req.headers['x-request-id'];
+  if (!signature || !requestId) return false;
+
+  const parts = signature.split(',').reduce((acc, part) => {
+    const [key, value] = part.split('=');
+    if (key && value) acc[key.trim()] = value.trim();
+    return acc;
+  }, {});
+
+  const dataId = req.query['data.id'] || req.body?.data?.id || '';
+  const manifest = `id:${dataId};request-id:${requestId};ts:${parts.ts};`;
+
+  const hmac = crypto
+    .createHmac('sha256', process.env.WEBHOOK_SECRET)
+    .update(manifest)
+    .digest('hex');
+
+  return hmac === parts.v1;
+};
 
 // ─────────────────────────────────────────────────────────
 // POST /api/subscriptions/activate-free
@@ -219,6 +244,11 @@ try {
 const webhook = async (req, res) => {
   // Siempre 200 primero — MP necesita respuesta inmediata
   res.sendStatus(200);
+
+  if (!verifyMpSignature(req)) {
+    console.warn('[SUBSCRIPTION WEBHOOK] Firma inválida — ignorando request');
+    return;
+  }
 
   try {
     // ── FIX: MP puede mandar datos por body O por query params ──

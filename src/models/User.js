@@ -43,8 +43,8 @@ const userSchema = new mongoose.Schema(
       reports:       { type: Boolean, default: true },
       categorias:    { type: Boolean, default: true },
       messages:      { type: Boolean, default: true },
-      logs:          { type: Boolean, default: true },
-      config:        { type: Boolean, default: true },
+      logs:          { type: Boolean, default: false },
+      config:        { type: Boolean, default: false },
     },
     emailVerificationToken: {
       type: String,
