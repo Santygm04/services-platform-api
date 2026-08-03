@@ -11,6 +11,7 @@ const {
   getRecentSearches,
   addRecentSearch,
   clearRecentSearches,
+  updateLocation,
 } = require('../controllers/seekercontroller');
 const { protect, requireEmailVerified } = require('../middlewares/authmiddleware');
 const { authorizeRoles } = require('../middlewares/rolemiddleware');
@@ -35,5 +36,7 @@ router.post('/me/contact/:providerId', requireEmailVerified, registerContact);
 router.get('/me/recent-searches',    getRecentSearches);
 router.post('/me/recent-searches',   addRecentSearch);
 router.delete('/me/recent-searches', clearRecentSearches);
+
+router.patch('/me/location', updateLocation);
 
 module.exports = router;

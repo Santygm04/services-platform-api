@@ -24,7 +24,6 @@ const {
   facebookAuth,
   facebookCallback,
   // Plan
-  upgradePlan,
   adminUpgradePlan,
 } = require('../controllers/authcontroller');
 
@@ -60,13 +59,6 @@ router.get('/facebook',          facebookAuth);
 router.get('/facebook/callback', facebookCallback);
 
 // ── Plan upgrade ──────────────────────────────────────────
-// Prestador actualiza su propio plan (llamado desde frontend post-pago)
-router.patch('/upgrade-plan',
-  protect,
-  authorizeRoles('provider'),
-  upgradePlan
-);
-
 // Admin actualiza el plan de cualquier prestador
 router.patch('/admin/upgrade-plan/:userId',
   protect,

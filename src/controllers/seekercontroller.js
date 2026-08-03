@@ -252,6 +252,33 @@ const clearRecentSearches = async (req, res) => {
     res.status(500).json({ message: 'Error interno del servidor' });
   }
 };
+
+// ── PATCH /api/seekers/me/location ─────────────────────────
+// Confirma/actualiza la ubicación del buscador. Requerida antes de poder
+// crear un ticket SOS Zona (ver ticketcontroller.js — responde 409 si falta).
+const updateLocation = async (req, res) => {
+  try {
+    const { lat, lng } = req.body;
+
+    if (typeof lat !== 'number' || typeof lng !== 'number') {
+      return res.status(400).json({ message: 'lat y lng deben ser números' });
+    }
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      return res.status(400).json({ message: 'Coordenadas fuera de rango' });
+    }
+
+    const profile = await SeekerProfile.findOneAndUpdate(
+      { userId: req.user._id },
+      { $set: { location: { type: 'Point', coordinates: [lng, lat] } } },
+      { new: true, upsert: true }
+    );
+
+    res.json({ message: 'Ubicación actualizada', location: profile.location });
+  } catch (err) {
+    console.error('updateLocation seeker error:', err);
+    res.status(500).json({ message: 'Error interno del servidor' });
+  }
+};
  
 
 module.exports = {
@@ -264,5 +291,6 @@ module.exports = {
   registerContact,
   getRecentSearches, 
   addRecentSearch, 
-  clearRecentSearches
+  clearRecentSearches,
+  updateLocation,
 };

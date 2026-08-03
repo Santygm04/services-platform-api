@@ -123,6 +123,15 @@ const providerProfileSchema = new mongoose.Schema(
       default: false,
     },
 
+    // ── SOS Zona — ubicación geoespacial ──────────────────
+    // null hasta que el prestador confirme ubicación desde la app mobile
+    // (migración pasiva — no se geocodifica el `zone` existente en batch).
+    // Mientras sea null, no participa de ningún broadcast de SOS Zona.
+    location: {
+      type: { type: String, enum: ['Point'], default: 'Point' },
+      coordinates: { type: [Number], default: undefined }, // [lng, lat]
+    },
+
     // ── Sistema de referidos ──────────────────────────────
     // Código único que el prestador puede compartir
     referralCode: {
@@ -254,6 +263,7 @@ providerProfileSchema.index({ slug: 1 });
 providerProfileSchema.index({ plan: 1, activeStatus: 1 });
 providerProfileSchema.index({ referralCode: 1 });
 providerProfileSchema.index({ zone: 'text', profession: 'text' });
+providerProfileSchema.index({ location: '2dsphere' });
 
 module.exports =
   mongoose.models.ProviderProfile ||

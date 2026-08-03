@@ -32,6 +32,14 @@ const seekerProfileSchema = new mongoose.Schema(
         message: 'profilePhoto debe ser una URL http(s) válida',
       },
     },
+
+    // ── SOS Zona — ubicación geoespacial ──────────────────
+    // Requerida (409 en POST /api/tickets si es null) para poder crear un ticket.
+    location: {
+      type: { type: String, enum: ['Point'], default: 'Point' },
+      coordinates: { type: [Number], default: undefined }, // [lng, lat]
+    },
+
     favorites: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -76,5 +84,7 @@ const seekerProfileSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+seekerProfileSchema.index({ location: '2dsphere' });
 
 module.exports = mongoose.models.SeekerProfile || mongoose.model('SeekerProfile', seekerProfileSchema);

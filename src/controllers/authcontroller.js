@@ -437,7 +437,7 @@ const login = async (req, res) => {
 // req.query.role → 'provider' | 'seeker' (para saber qué perfil crear)
 // Se pasa como state para recuperarlo en el callback.
 const googleAuth = (req, res) => {
-  const role  = req.query.role || 'seeker';
+  const role  = ['provider', 'seeker'].includes(req.query.role) ? req.query.role : 'seeker';
   const ref   = req.query.ref  || '';  // código de referido opcional
 
   // Construir la URL de Google OAuth manualmente
@@ -611,7 +611,7 @@ const googleCallback = async (req, res) => {
 // GET /api/auth/facebook
 // Mismo patrón que googleAuth: construye la URL manualmente y redirige.
 const facebookAuth = (req, res) => {
-  const role = req.query.role || 'seeker';
+  const role = ['provider', 'seeker'].includes(req.query.role) ? req.query.role : 'seeker';
   const ref  = req.query.ref  || '';
 
   const params = new URLSearchParams({
@@ -640,8 +640,8 @@ const facebookCallback = async (req, res) => {
     let ref  = '';
     try {
       const parsed = JSON.parse(state || '{}');
-      role = parsed.role || 'seeker';
-      ref  = parsed.ref  || '';
+      role = ['provider', 'seeker'].includes(parsed.role) ? parsed.role : 'seeker';
+      ref  = typeof parsed.ref === 'string' ? parsed.ref : '';
     } catch (_) {}
 
     const redirectUri = process.env.FACEBOOK_CALLBACK_URL || `${process.env.BACKEND_URL}/api/auth/facebook/callback`;
@@ -1063,7 +1063,6 @@ module.exports = {
   facebookAuth,
   facebookCallback,
   // Plan
-  upgradePlan,
   adminUpgradePlan,
   setActiveRole,
 };

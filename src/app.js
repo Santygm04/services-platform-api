@@ -23,6 +23,7 @@ const notificationRoutes = require('./routes/notificationroutes');
 const analyticsRoutes    = require('./routes/analyticsroutes');
 const siteConfigRoutes   = require('./routes/siteconfigroutes');
 const reportRoutes       = require('./routes/reportroutes');
+const ticketRoutes       = require('./routes/ticketroutes');
 const app = express();
 
 app.set('trust proxy', 1);
@@ -90,21 +91,38 @@ const uploadLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  message: { message: 'Demasiadas solicitudes, esperá unos minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const verificationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  message: { message: 'Demasiados intentos de verificación, esperá 1 hora.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 app.use('/api/auth',          authLimiter, authRoutes);
-app.use('/api/providers',     providerRoutes);
-app.use('/api/seekers',       seekerRoutes);
+app.use('/api/providers',     generalLimiter, providerRoutes);
+app.use('/api/seekers',       generalLimiter, seekerRoutes);
 app.use('/api/search',        searchRoutes);
 app.use('/api/reviews',       writeLimiter, reviewRoutes);
 app.use('/api/reports',       writeLimiter, reportRoutes);
+app.use('/api/tickets',       writeLimiter, ticketRoutes);
 app.use('/api/categories',    categoryRoutes);
 app.use('/api/upload',        uploadLimiter, uploadRoutes);
-app.use('/api/admin',         adminRoutes);
+app.use('/api/admin',         generalLimiter, adminRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
-app.use('/api/verification',  verificationRoutes);
+app.use('/api/verification',  verificationLimiter, verificationRoutes);
 app.use('/api/banners',       bannerRoutes);
 app.use('/api/events',        writeLimiter, eventRoutes);
-app.use('/api/messages',      messageRoutes);
-app.use('/api/notifications', notificationRoutes);
+app.use('/api/messages',      generalLimiter, messageRoutes);
+app.use('/api/notifications', generalLimiter, notificationRoutes);
 app.use('/api/admin/analytics', analyticsRoutes);
 app.use('/api/config',          siteConfigRoutes);
 
