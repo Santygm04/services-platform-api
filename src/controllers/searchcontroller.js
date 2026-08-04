@@ -73,9 +73,8 @@ const searchProviders = async (req, res) => {
 
      if (active === 'true') {
       filter.activeStatus = true;
-    } else {
-      filter.activeStatus = { $ne: false };
     }
+    // Si no se filtra por active, traemos todos (activos e inactivos)
 
     // Traer todos para ordenar por plan correctamente antes de paginar
     const allProviders = await ProviderProfile.find(filter)
@@ -112,7 +111,7 @@ const searchProviders = async (req, res) => {
     (b.verified - a.verified) || (b.ratingAverage - a.ratingAverage) || (b.reviewsCount - a.reviewsCount)
   ),
   ];
-  const sortedInactive = allProviders.filter(p => p.activeStatus === false);
+  const sortedInactive = validProviders.filter(p => p.activeStatus === false);
   const sorted = [...sortedActive, ...sortedInactive];
 
     const pageNum   = Math.max(1, parseInt(page) || 1);
