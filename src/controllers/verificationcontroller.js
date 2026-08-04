@@ -1,1076 +1,468 @@
-const User            = require('../models/User');
+const cloudinary = require('../config/cloudinary');
+const Verification = require('../models/verification');
 const ProviderProfile = require('../models/ProviderProfile');
-const SeekerProfile   = require('../models/SeekerProfile');
-const Notification    = require('../models/notification');
-const mongoose         = require('mongoose');
-const jwt             = require('jsonwebtoken');
-const crypto          = require('crypto');
-const {
-  sendVerificationEmail,
-  sendWelcomeEmail,
-  sendPasswordResetEmail,
-  sendPlanUpgradeEmail,   // agregar a emailservice.js si no existe
-} = require('../services/emailservice');
+const User = require('../models/User');
+const Notification = require('../models/notification');
+const { sendVerifiedProviderEmail } = require('../services/emailservice');
 const { notifyAdmins } = require('../utils/adminNotify');
 
-// ── Helpers ───────────────────────────────────────────────
-const generateToken = (userId) =>
-  jwt.sign({ id: userId }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+// ── Helpers ──────────────────────────────────────────────
+const getOrCreate = async (userId) => {
+  let doc = await Verification.findOne({ userId });
+  if (!doc) doc = await Verification.create({ userId });
+  return doc;
+};
+
+const uploadBufferToCloudinary = (fileBuffer, folder, publicId) => {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder, public_id: publicId, resource_type: 'image', overwrite: true },
+      (error, result) => { if (error) reject(error); else resolve(result); }
+    );
+    stream.end(fileBuffer);
   });
-
-const generateEmailToken = () => crypto.randomBytes(32).toString('hex');
-
-const sanitizeText = (value, maxLength = 100) => {
-  if (typeof value !== 'string') return value;
-  let clean = value.replace(/<[^>]*>/g, '').trim();
-  if (maxLength) clean = clean.slice(0, maxLength);
-  return clean;
 };
 
-const SiteConfig = require('../models/siteconfig'); // ⚠️ confirmame el nombre exacto del archivo
+const fileUrlToBase64 = async (url) => {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`No se pudo descargar la imagen: ${url}`);
+  const arrayBuffer = await response.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  const contentType = response.headers.get('content-type') || 'image/jpeg';
+  return { base64: buffer.toString('base64'), mediaType: contentType };
+};
 
-// ── Helper: acreditar referido respetando config global ───
-const awardReferralCredit = async (referrerProfileId) => {
+// ── Verificación con IA (Claude API) ─────────────────────
+const analyzeWithAI = async (verification) => {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+
+  if (!apiKey) {
+    console.log('ANTHROPIC_API_KEY no configurada — verificación manual');
+    return {
+      autoApprove: false,
+      reason: 'Verificación automática no disponible. Se requiere revisión manual.',
+    };
+  }
+
   try {
-    const config = await SiteConfig.findOne().select('referrals');
-    const r = config?.referrals || {};
-    if (r.enabled === false) return;
+    const imageFields = ['dniFront', 'dniBack', 'selfie'];
+    const images = [];
 
-    const creditAmount = r.creditPerReferral ?? 500;
-    if (!creditAmount) return;
-
-    if (r.maxCreditsPerUser) {
-      const profile = await ProviderProfile.findById(referrerProfileId).select('referralCredits');
-      if (profile && profile.referralCredits + creditAmount > r.maxCreditsPerUser) {
-        await ProviderProfile.findByIdAndUpdate(referrerProfileId, { referralCredits: r.maxCreditsPerUser });
-        return;
+    for (const field of imageFields) {
+      const fileUrl = verification[field];
+      if (!fileUrl) {
+        return { autoApprove: false, reason: `Falta la imagen ${field}.` };
       }
+      const imageData = await fileUrlToBase64(fileUrl);
+      images.push(imageData);
     }
 
-    await ProviderProfile.findByIdAndUpdate(referrerProfileId, { $inc: { referralCredits: creditAmount } });
-
-    const referrerProfile = await ProviderProfile.findById(referrerProfileId).select('userId');
-    if (referrerProfile?.userId) {
-      Notification.create({
-        userId: referrerProfile.userId,
-        type: 'referral_credit',
-        title: '🎁 ¡Sumaste créditos!',
-        body: `Ganaste $${creditAmount.toLocaleString('es-AR')} por un nuevo referido. Usalos como descuento en tu plan.`,
-        meta: { creditAmount },
-      }).catch(err => console.error('Notification create error:', err));
-    }
-  } catch (err) {
-    console.error('awardReferralCredit error:', err);
-  }
-};
-
-// ── Helper: notificar providers de la zona ────────────────
-const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-const notifyProvidersInZone = async (seekerName, seekerZone) => {
-  if (!seekerZone) return;
-  try {
-    const zoneWords  = seekerZone.toLowerCase().trim().split(/[\s,]+/).filter(w => w.length >= 2).map(escapeRegex);
-    if (!zoneWords.length) return;
-
-    const zoneRegex  = new RegExp(zoneWords.join('|'), 'i');
-    const providers  = await ProviderProfile.find({ zone: { $regex: zoneRegex } })
-      .select('userId zone')
-      .limit(50);
-
-    if (!providers.length) return;
-
-    const notifications = providers.map(p => ({
-      userId: p.userId,
-      type:   'new_seeker_in_zone',
-      title:  '🔍 Nuevo buscador en tu zona',
-      body:   `${seekerName} se registró en ${seekerZone}. ¡Puede necesitar tus servicios!`,
-      meta:   { seekerZone },
-    }));
-
-    await Notification.insertMany(notifications);
-  } catch (err) {
-    console.error('notifyProvidersInZone error:', err);
-  }
-};
-
-// ── Helper: armar respuesta de usuario ────────────────────
-const buildUserResponse = async (user) => {
-  let profilePhoto = null;
-  let plan         = null;
-
-  if (user.role === 'provider' || user.role === 'both') {
-    const profile  = await ProviderProfile.findOne({ userId: user._id }).select('profilePhoto plan');
-    profilePhoto   = profile?.profilePhoto || null;
-    plan           = profile?.plan || 'free';
-  }
-  if (user.role === 'seeker') {
-    const seekerP  = await SeekerProfile.findOne({ userId: user._id }).select('profilePhoto');
-    profilePhoto   = seekerP?.profilePhoto || null;
-  }
-  if (user.role === 'both' && !profilePhoto) {
-    const seekerP  = await SeekerProfile.findOne({ userId: user._id }).select('profilePhoto');
-    profilePhoto   = seekerP?.profilePhoto || null;
-  }
-
-  return {
-    id:            user._id,
-    name:          user.name,
-    email:         user.email,
-    role:          user.role,
-    activeRole:    user.activeRole || null,
-    emailVerified: user.emailVerified,
-    googleId:      user.googleId || null,
-    facebookId:    user.facebookId || null,
-    status:        user.status,
-    profilePhoto,
-    plan:          plan || null,
-  };
-};
-
-// ════════════════════════════════════════════════════════════
-//  ADMIN
-// ════════════════════════════════════════════════════════════
-
-// GET /api/auth/admin-check
-const adminCheck = async (req, res) => {
-  try {
-    const adminExists = await User.findOne({ role: 'admin' }).select('_id');
-    res.json({ adminExists: !!adminExists });
-  } catch (err) {
-    console.error('adminCheck error:', err);
-    res.status(500).json({ message: 'Error interno' });
-  }
-};
-
-// POST /api/auth/admin-setup — primer admin (solo si no hay ninguno)
-const adminSetup = async (req, res) => {
-  try {
-    const { name, email, password } = req.body;
-    if (!name || !email || !password)
-      return res.status(400).json({ message: 'Todos los campos son obligatorios' });
-    if (password.length < 8)
-      return res.status(400).json({ message: 'La contraseña debe tener al menos 8 caracteres' });
-
-    const adminExists = await User.findOne({ role: 'admin' });
-    if (adminExists)
-      return res.status(403).json({ message: 'Ya existe un administrador. Usá el código de invitación.' });
-
-    const existing = await User.findOne({ email });
-    if (existing) return res.status(400).json({ message: 'Ya existe una cuenta con ese email' });
-
-    let user;
-    try {
-      user = await User.create({ name, email, password, role: 'admin', emailVerified: true });
-    } catch (err) {
-      if (err.code === 11000) {
-        return res.status(403).json({ message: 'Ya existe un administrador. Usá el código de invitación.' });
-      }
-      throw err;
-    }
-    const token = generateToken(user._id);
-
-    res.status(201).json({
-      message: 'Administrador creado exitosamente.',
-      token,
-      user: { id: user._id, name: user.name, email: user.email, role: 'admin', emailVerified: true },
-    });
-  } catch (err) {
-    console.error('adminSetup error:', err);
-    res.status(500).json({ message: 'Error interno del servidor' });
-  }
-};
-
-// POST /api/auth/register-admin — con código de invitación
-const registerAdmin = async (req, res) => {
-  try {
-    const { name, email, password, inviteCode } = req.body;
-    if (!name || !email || !password || !inviteCode)
-      return res.status(400).json({ message: 'Todos los campos son obligatorios (incluido el código de invitación)' });
-    if (password.length < 8)
-      return res.status(400).json({ message: 'La contraseña debe tener al menos 8 caracteres' });
-
-    const validCode = process.env.ADMIN_INVITE_CODE;
-    if (!validCode)
-      return res.status(503).json({ message: 'El registro de administradores no está habilitado.' });
-    if (inviteCode.trim() !== validCode.trim())
-      return res.status(403).json({ message: 'Código de invitación inválido' });
-
-    const existing = await User.findOne({ email });
-    if (existing) return res.status(400).json({ message: 'Ya existe una cuenta con ese email' });
-
-    const user  = await User.create({ name, email, password, role: 'admin', emailVerified: true });
-    const token = generateToken(user._id);
-
-    res.status(201).json({
-      message: 'Administrador creado exitosamente.',
-      token,
-      user: { id: user._id, name: user.name, email: user.email, role: 'admin', emailVerified: true },
-    });
-  } catch (err) {
-    console.error('registerAdmin error:', err);
-    res.status(500).json({ message: 'Error interno del servidor' });
-  }
-};
-
-// ════════════════════════════════════════════════════════════
-//  REGISTRO
-// ════════════════════════════════════════════════════════════
-
-// POST /api/auth/register-seeker
-const registerSeeker = async (req, res) => {
-  try {
-    const { name, email, password, zone } = req.body;
-    if (!name || !email || !password)
-      return res.status(400).json({ message: 'Todos los campos son obligatorios' });
-
-    const cleanName = sanitizeText(name, 100);
-    const cleanZone  = sanitizeText(zone, 100);
-    if (!cleanName) return res.status(400).json({ message: 'Nombre inválido' });
-
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail))
-      return res.status(400).json({ message: 'Email inválido' });
-    const existing = await User.findOne({ email: normalizedEmail });
-if (existing) {
-  if (existing.role === 'provider') {
-    const seekerExists = await SeekerProfile.findOne({ userId: existing._id });
-    if (!seekerExists) await SeekerProfile.create({ userId: existing._id, zone: cleanZone || '' });
-    existing.role = 'both';
-    existing.emailVerified = false;
-    existing.pendingRoleVerification = 'provider';
-    const emailToken = generateEmailToken();
-    existing.emailVerificationToken = emailToken;
-    await existing.save();
-    const token = generateToken(existing._id);
-    sendVerificationEmail(existing.email, existing.name, emailToken).catch(() => {});
-
-    notifyAdmins(
-      'new_seeker',
-      `Nuevo buscador: ${existing.name}`,
-      `${existing.name} agregó un perfil de buscador (ya era prestador).`,
-      '/admin?tab=seekers',
-      { userId: existing._id }
-    ).catch(err => console.error('notifyAdmins error:', err));
-
-    return res.status(200).json({
-      message: 'Perfil de buscador agregado. Revisá tu email para verificar tu cuenta.',
-      newRole: 'seeker',
-      token,
-      user: { id: existing._id, name: existing.name, email: existing.email, role: 'both', emailVerified: false },
-    });
-  }
-  return res.status(400).json({ message: 'Ya existe una cuenta con ese email' });
-}
-
-    const emailToken = generateEmailToken();
-    const user       = await User.create({ name: cleanName, email: normalizedEmail, password, role: 'seeker', emailVerificationToken: emailToken });
-    await SeekerProfile.create({ userId: user._id, zone: cleanZone || '' });
-
-    if (cleanZone) {
-      notifyProvidersInZone(cleanName, cleanZone).catch(() => {});
-    }
-
-    const token = generateToken(user._id);
-    res.status(201).json({
-      message: 'Cuenta creada. Revisá tu email para verificarla.',
-      token,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role, emailVerified: user.emailVerified },
-    });
-
-    sendVerificationEmail(normalizedEmail, cleanName, emailToken)
-      .then(() => console.log('✅ Email enviado a', normalizedEmail))
-      .catch(err => console.error('❌ Email falló:', err.message));
-    // welcome se manda solo después de verificar el email
-
-    notifyAdmins(
-      'new_seeker',
-      `Nuevo buscador: ${user.name}`,
-      `${user.name} se registró como buscador${cleanZone ? ` en ${cleanZone}` : ''}.`,
-      '/admin?tab=seekers',
-      { userId: user._id }
-    ).catch(err => console.error('notifyAdmins error:', err));
-
-  } catch (err) {
-    console.error('registerSeeker error:', err);
-    res.status(500).json({ message: 'Error interno del servidor' });
-  }
-};
-// POST /api/auth/register-provider
-// Soporta código de referido opcional (?ref=ZS-XXXXXX o body.referralCode)
-const registerProvider = async (req, res) => {
-  try {
-    const { name, email, password, referralCode } = req.body;
-
-    if (!name || !email || !password)
-      return res.status(400).json({ message: 'Todos los campos son obligatorios' });
-
-    const cleanName = sanitizeText(name, 100);
-    if (!cleanName) return res.status(400).json({ message: 'Nombre inválido' });
-
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail))
-      return res.status(400).json({ message: 'Email inválido' });
-    const existing = await User.findOne({ email: normalizedEmail });
-if (existing) {
-  if (existing.role === 'seeker') {
-    const providerExists = await ProviderProfile.findOne({ userId: existing._id });
-    if (!providerExists) {
-      let referredByUserId = null;
-      if (referralCode?.trim()) {
-        const referrerProfile = await ProviderProfile.findOne({ referralCode: referralCode.trim() });
-        if (referrerProfile) {
-          referredByUserId = referrerProfile.userId;
-          await awardReferralCredit(referrerProfile._id);
-        }
-      }
-      await ProviderProfile.create({ userId: existing._id, referredBy: referredByUserId });
-    }
-    existing.role = 'both';
-    existing.emailVerified = false;
-    existing.pendingRoleVerification = 'seeker';
-    const emailToken = generateEmailToken();
-    existing.emailVerificationToken = emailToken;
-    await existing.save();
-    const token = generateToken(existing._id);
-    sendVerificationEmail(existing.email, existing.name, emailToken).catch(() => {});
-
-    notifyAdmins(
-      'new_provider',
-      `Nuevo prestador: ${existing.name}`,
-      `${existing.name} agregó un perfil de prestador (ya era buscador).`,
-      '/admin?tab=providers',
-      { userId: existing._id }
-    ).catch(err => console.error('notifyAdmins error:', err));
-
-    return res.status(200).json({
-      message: 'Perfil de prestador agregado. Revisá tu email para verificar tu cuenta.',
-      newRole: 'provider',
-      token,
-      user: { id: existing._id, name: existing.name, email: existing.email, role: 'both', emailVerified: false },
-    });
-  }
-  return res.status(409).json({ message: 'Ya existe una cuenta con ese email.' });
-}
-
-    const emailToken = generateEmailToken();
-    const user       = await User.create({
-      name: cleanName,
-      email: normalizedEmail,
-      password,
-      role: 'provider',
-      emailVerificationToken: emailToken,
-    });
-
-    // Buscar quién refirió (si hay código)
-    let referredByUserId = null;
-    if (referralCode?.trim()) {
-      const referrerProfile = await ProviderProfile.findOne({ referralCode: referralCode.trim() });
-      if (referrerProfile) {
-        referredByUserId = referrerProfile.userId;
-        await awardReferralCredit(referrerProfile._id);
-      }
-    }
-
-    await ProviderProfile.create({
-      userId:      user._id,
-      referredBy:  referredByUserId,
-    });
-
-    const token = generateToken(user._id);
-    res.status(201).json({
-      message: 'Cuenta creada. Revisá tu email para verificarla.',
-      token,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role, emailVerified: user.emailVerified },
-    });
-
-    sendVerificationEmail(normalizedEmail, cleanName, emailToken)
-      .then(() => console.log('✅ Email enviado a', normalizedEmail))
-      .catch(err => console.error('❌ Email falló:', err.message));
-
-    notifyAdmins(
-      'new_provider',
-      `Nuevo prestador: ${user.name}`,
-      `${user.name} se registró como prestador${referredByUserId ? ' (llegó por referido)' : ''}.`,
-      '/admin?tab=providers',
-      { userId: user._id }
-    ).catch(err => console.error('notifyAdmins error:', err));
-
-  } catch (err) {
-    console.error('registerProvider error:', err);
-    res.status(500).json({ message: 'Error interno del servidor' });
-  }
-};
-
-// ════════════════════════════════════════════════════════════
-//  LOGIN + GOOGLE OAUTH
-// ════════════════════════════════════════════════════════════
-
-// POST /api/auth/login
-const login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password)
-      return res.status(400).json({ message: 'Email y contraseña son obligatorios' });
-
-    const user = await User.findOne({ email });
-    if (!user)   return res.status(401).json({ message: 'Email o contraseña incorrectos' });
-    if (user.status === 'blocked')
-      return res.status(403).json({ message: 'Tu cuenta fue suspendida. Contactá al soporte.' });
-
-    const isMatch = await user.matchPassword(password);
-    if (!isMatch) {
-    if (user.googleId) {
-      return res.status(401).json({ message: 'Esta cuenta fue creada con Google. Usá "Continuar con Google" para ingresar.' });
-      }
-      if (user.facebookId) {
-        return res.status(401).json({ message: 'Esta cuenta fue creada con Facebook. Usá "Continuar con Facebook" para ingresar.' });
-      }
-      return res.status(401).json({ message: 'Email o contraseña incorrectos' });
-    }
-
-    const token    = generateToken(user._id);
-    const userData = await buildUserResponse(user);
-    res.json({ token, user: userData });
-  } catch (err) {
-    console.error('login error:', err);
-    res.status(500).json({ message: 'Error interno del servidor' });
-  }
-};
-
-// ── Google OAuth ──────────────────────────────────────────
-// GET /api/auth/google
-// Inicia el flujo OAuth con Google. El frontend redirige a esta URL.
-// req.query.role → 'provider' | 'seeker' (para saber qué perfil crear)
-// Se pasa como state para recuperarlo en el callback.
-const googleAuth = (req, res) => {
-  const role  = ['provider', 'seeker'].includes(req.query.role) ? req.query.role : 'seeker';
-  const ref   = req.query.ref  || '';  // código de referido opcional
-
-  // Construir la URL de Google OAuth manualmente
-  // (sin Passport, para mantener el código simple y sin deps extra)
-  const params = new URLSearchParams({
-    client_id:     process.env.GOOGLE_CLIENT_ID,
-    redirect_uri:  `${process.env.BACKEND_URL}/api/auth/google/callback`,
-    response_type: 'code',
-    scope:         'openid email profile',
-    state:         JSON.stringify({ role, ref }),
-    access_type:   'offline',
-    prompt:        'select_account',
-  });
-
-  res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
-};
-
-// GET /api/auth/google/callback
-// Google redirige aquí con ?code=...&state=...
-const googleCallback = async (req, res) => {
-  try {
-    const { code, state, error } = req.query;
-
-    if (error || !code) {
-      return res.redirect(`${process.env.FRONTEND_URL}/login?error=google_cancelled`);
-    }
-
-    // Parsear state
-    let role = 'seeker';
-    let ref  = '';
-    try {
-      const parsed = JSON.parse(state || '{}');
-      role = ['provider', 'seeker'].includes(parsed.role) ? parsed.role : 'seeker';
-      ref  = typeof parsed.ref === 'string' ? parsed.ref : '';
-    } catch (_) {}
-
-    // 1. Intercambiar code por access_token
-    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    // ── FIX: modelo correcto ──────────────────────────────
+    // claude-sonnet-4-20250514 no existe.
+    // Usar claude-sonnet-4-5 (alias estable de Sonnet 4.5) o claude-opus-4-5
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        code,
-        client_id:     process.env.GOOGLE_CLIENT_ID,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET,
-        redirect_uri:  `${process.env.BACKEND_URL}/api/auth/google/callback`,
-        grant_type:    'authorization_code',
+      headers: {
+        'Content-Type':     'application/json',
+        'x-api-key':        apiKey,
+        'anthropic-version':'2023-06-01',
+      },
+      body: JSON.stringify({
+        model:      'claude-sonnet-4-5',   // ← modelo correcto
+        max_tokens: 1000,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: { type: 'base64', media_type: images[0].mediaType, data: images[0].base64 },
+              },
+              {
+                type: 'image',
+                source: { type: 'base64', media_type: images[1].mediaType, data: images[1].base64 },
+              },
+              {
+                type: 'image',
+                source: { type: 'base64', media_type: images[2].mediaType, data: images[2].base64 },
+              },
+              {
+                type: 'text',
+                text: `Sos un sistema de verificación de identidad para una plataforma de servicios en Argentina.
+
+Te envío 3 imágenes:
+1. DNI frente (documento nacional de identidad argentino — lado con foto y datos)
+2. DNI dorso (lado trasero del DNI)
+3. Selfie (foto de la persona sosteniendo el DNI)
+
+Analizá las 3 imágenes y respondé SOLO con un JSON válido (sin markdown, sin backticks, sin texto extra) con esta estructura exacta:
+
+{
+  "isValidDNI": true/false,
+  "isFrontReadable": true/false,
+  "isBackReadable": true/false,
+  "hasFaceInSelfie": true/false,
+  "isDNIVisibleInSelfie": true/false,
+  "overallValid": true/false,
+  "confidence": "high"/"medium"/"low",
+  "issues": ["lista de problemas encontrados si los hay"],
+  "summary": "resumen breve de la verificación en español"
+}
+
+Criterios:
+- isValidDNI: ¿parece un DNI argentino real? (formato correcto, no una foto de pantalla, no editado)
+- isFrontReadable: ¿se leen los datos del frente? (nombre, número, foto)
+- isBackReadable: ¿se lee el dorso? (código de barras, datos)
+- hasFaceInSelfie: ¿hay una persona visible en la selfie?
+- isDNIVisibleInSelfie: ¿la persona sostiene un DNI en la selfie?
+- overallValid: true SOLO si todo lo anterior es true y la confidence es "high" o "medium"
+- Si algo falla, overallValid debe ser false
+
+Respondé SOLO el JSON, nada más.`,
+              },
+            ],
+          },
+        ],
       }),
     });
 
-    const tokenData = await tokenRes.json();
-    if (!tokenData.access_token) {
-      console.error('Google token error:', tokenData);
-      return res.redirect(`${process.env.FRONTEND_URL}/login?error=google_token`);
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error('Claude API error:', response.status, errText);
+      return {
+        autoApprove: false,
+        reason: 'Error al contactar el servicio de verificación. Se requiere revisión manual.',
+      };
     }
 
-    // 2. Obtener datos del usuario de Google
-    const userInfoRes  = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: { Authorization: `Bearer ${tokenData.access_token}` },
-    });
-    const googleUser   = await userInfoRes.json();
+    const data = await response.json();
+    const text = data.content?.[0]?.text || '';
+    const cleanJson = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
 
-    if (!googleUser.email) {
-      return res.redirect(`${process.env.FRONTEND_URL}/login?error=google_no_email`);
-    }
-
-    // 3. Buscar o crear el usuario
-    let user = await User.findOne({ email: googleUser.email });
-
-    if (!user) {
-      // Nuevo usuario via Google
-      user = await User.create({
-        name:          googleUser.name || googleUser.email.split('@')[0],
-        email:         googleUser.email,
-        password:      crypto.randomBytes(20).toString('hex'), // contraseña aleatoria (no se usa)
-        role,
-        emailVerified: true,  // Google ya verificó el email
-        googleId:      googleUser.sub,
-      });
-
-      // Crear perfil según rol
-      if (role === 'provider') {
-        // Referido opcional
-        let referredByUserId = null;
-        if (ref?.trim()) {
-          const referrerProfile = await ProviderProfile.findOne({ referralCode: ref.trim() });
-          if (referrerProfile) {
-            referredByUserId = referrerProfile.userId;
-            await awardReferralCredit(referrerProfile._id);
-          }
-        }
-        await ProviderProfile.create({ userId: user._id, referredBy: referredByUserId });
-      } else {
-        await SeekerProfile.create({ userId: user._id });
-      }
-
-      // Email de bienvenida (Google ya verificó el email, no hace falta sendVerificationEmail)
-      sendWelcomeEmail(user.email, user.name, role)
-        .then(() => console.log('✅ Welcome email (Google) enviado a', user.email))
-        .catch(err => console.error('❌ Welcome email (Google) falló:', err.message));
-
-      notifyAdmins(
-        role === 'provider' ? 'new_provider' : 'new_seeker',
-        `Nuevo ${role === 'provider' ? 'prestador' : 'buscador'}: ${user.name}`,
-        `${user.name} se registró con Google como ${role === 'provider' ? 'prestador' : 'buscador'}.`,
-        role === 'provider' ? '/admin?tab=providers' : '/admin?tab=seekers',
-        { userId: user._id }
-      ).catch(err => console.error('notifyAdmins error:', err));
-
-    } else {
-      // Usuario existente — actualizar googleId si no tenía
-      if (!user.googleId) {
-        user.googleId      = googleUser.sub;
-        user.emailVerified = true;
-        await user.save();
-      }
-      if (user.status === 'blocked') {
-        return res.redirect(`${process.env.FRONTEND_URL}/login?error=blocked`);
-      }
-
-      // Multi-role: si el rol pedido es distinto al que tiene, crear el perfil faltante
-      const currentRole = user.role;
-      if (currentRole !== 'admin' && currentRole !== 'both' && currentRole !== role) {
-        // Crear el perfil del rol nuevo si no existe
-        if (role === 'provider') {
-          const exists = await ProviderProfile.findOne({ userId: user._id });
-          if (!exists) {
-            let referredByUserId = null;
-            if (ref?.trim()) {
-              const referrerProfile = await ProviderProfile.findOne({ referralCode: ref.trim() });
-              if (referrerProfile) {
-                referredByUserId = referrerProfile.userId;
-                await awardReferralCredit(referrerProfile._id);
-              }
-            }
-            await ProviderProfile.create({ userId: user._id, referredBy: referredByUserId });
-          }
-        } else if (role === 'seeker') {
-          const exists = await SeekerProfile.findOne({ userId: user._id });
-          if (!exists) await SeekerProfile.create({ userId: user._id });
-        }
-        user.role = 'both';
-        await user.save();
-        sendWelcomeEmail(user.email, user.name, role)
-          .then(() => console.log('✅ Welcome email (Google, multi-rol) enviado a', user.email))
-          .catch(err => console.error('❌ Welcome email (Google, multi-rol) falló:', err.message));
-
-        notifyAdmins(
-          role === 'provider' ? 'new_provider' : 'new_seeker',
-          `Nuevo ${role === 'provider' ? 'prestador' : 'buscador'}: ${user.name}`,
-          `${user.name} agregó el rol de ${role === 'provider' ? 'prestador' : 'buscador'} con Google.`,
-          role === 'provider' ? '/admin?tab=providers' : '/admin?tab=seekers',
-          { userId: user._id }
-        ).catch(err => console.error('notifyAdmins error:', err));
-      }
-    }
-
-    // 4. Generar JWT y redirigir al frontend
-    const token = generateToken(user._id);
-
-    // Redirigir con token en query (el frontend lo guarda en localStorage)
-    res.redirect(
-      `${process.env.FRONTEND_URL}/auth/google-success?token=${token}&role=${user.role}`
-    );
-  } catch (err) {
-    console.error('googleCallback error:', err);
-    res.redirect(`${process.env.FRONTEND_URL}/login?error=google_error`);
-  }
-};
-
-// ── Facebook OAuth ────────────────────────────────────────
-// GET /api/auth/facebook
-// Mismo patrón que googleAuth: construye la URL manualmente y redirige.
-const facebookAuth = (req, res) => {
-  const role = ['provider', 'seeker'].includes(req.query.role) ? req.query.role : 'seeker';
-  const ref  = req.query.ref  || '';
-
-  const params = new URLSearchParams({
-    client_id:    process.env.FACEBOOK_APP_ID,
-    redirect_uri: process.env.FACEBOOK_CALLBACK_URL || `${process.env.BACKEND_URL}/api/auth/facebook/callback`,
-    state:        JSON.stringify({ role, ref }),
-    scope:        'email,public_profile',
-    response_type: 'code',
-  });
-
-  res.redirect(`https://www.facebook.com/v20.0/dialog/oauth?${params}`);
-};
-
-// GET /api/auth/facebook/callback
-// Facebook redirige aquí con ?code=...&state=...
-const facebookCallback = async (req, res) => {
-  try {
-    const { code, state, error } = req.query;
-
-    if (error || !code) {
-      return res.redirect(`${process.env.FRONTEND_URL}/login?error=facebook_cancelled`);
-    }
-
-    // Parsear state
-    let role = 'seeker';
-    let ref  = '';
+    let result;
     try {
-      const parsed = JSON.parse(state || '{}');
-      role = ['provider', 'seeker'].includes(parsed.role) ? parsed.role : 'seeker';
-      ref  = typeof parsed.ref === 'string' ? parsed.ref : '';
-    } catch (_) {}
-
-    const redirectUri = process.env.FACEBOOK_CALLBACK_URL || `${process.env.BACKEND_URL}/api/auth/facebook/callback`;
-
-    // 1. Intercambiar code por access_token
-    const tokenParams = new URLSearchParams({
-      client_id:     process.env.FACEBOOK_APP_ID,
-      client_secret: process.env.FACEBOOK_APP_SECRET,
-      redirect_uri:  redirectUri,
-      code,
-    });
-
-    const tokenRes  = await fetch(`https://graph.facebook.com/v20.0/oauth/access_token?${tokenParams}`);
-    const tokenData = await tokenRes.json();
-
-    if (!tokenData.access_token) {
-      console.error('Facebook token error:', tokenData);
-      return res.redirect(`${process.env.FRONTEND_URL}/login?error=facebook_token`);
+      result = JSON.parse(cleanJson);
+    } catch (parseErr) {
+      console.error('AI response parse error:', parseErr, 'Raw:', text);
+      return {
+        autoApprove: false,
+        reason: 'No se pudo procesar la respuesta de verificación. Revisión manual necesaria.',
+      };
     }
 
-    // 2. Obtener datos del usuario de Facebook
-    const userInfoRes = await fetch(
-      `https://graph.facebook.com/me?fields=id,name,email&access_token=${tokenData.access_token}`
-    );
-    const fbUser = await userInfoRes.json();
-
-    if (!fbUser.email) {
-      // Facebook a veces no devuelve email (cuenta sin email verificado, o el usuario no lo compartió)
-      return res.redirect(`${process.env.FRONTEND_URL}/login?error=facebook_no_email`);
-    }
-
-    // 3. Buscar o crear el usuario
-    let user = await User.findOne({ email: fbUser.email });
-
-    if (!user) {
-      user = await User.create({
-        name:          fbUser.name || fbUser.email.split('@')[0],
-        email:         fbUser.email,
-        password:      crypto.randomBytes(20).toString('hex'),
-        role,
-        emailVerified: true, // Facebook ya verificó el email
-        facebookId:    fbUser.id,
-      });
-
-      if (role === 'provider') {
-        let referredByUserId = null;
-        if (ref?.trim()) {
-          const referrerProfile = await ProviderProfile.findOne({ referralCode: ref.trim() });
-          if (referrerProfile) {
-            referredByUserId = referrerProfile.userId;
-            await awardReferralCredit(referrerProfile._id);
-          }
-        }
-        await ProviderProfile.create({ userId: user._id, referredBy: referredByUserId });
-      } else {
-        await SeekerProfile.create({ userId: user._id });
-      }
-
-      sendWelcomeEmail(user.email, user.name, role).catch(() => {});
-
-      notifyAdmins(
-        role === 'provider' ? 'new_provider' : 'new_seeker',
-        `Nuevo ${role === 'provider' ? 'prestador' : 'buscador'}: ${user.name}`,
-        `${user.name} se registró con Facebook como ${role === 'provider' ? 'prestador' : 'buscador'}.`,
-        role === 'provider' ? '/admin?tab=providers' : '/admin?tab=seekers',
-        { userId: user._id }
-      ).catch(err => console.error('notifyAdmins error:', err));
-
-    } else {
-      if (!user.facebookId) {
-        user.facebookId    = fbUser.id;
-        user.emailVerified = true;
-        await user.save();
-      }
-      if (user.status === 'blocked') {
-        return res.redirect(`${process.env.FRONTEND_URL}/login?error=blocked`);
-      }
-
-      const currentRole = user.role;
-      if (currentRole !== 'admin' && currentRole !== 'both' && currentRole !== role) {
-        if (role === 'provider') {
-          const exists = await ProviderProfile.findOne({ userId: user._id });
-          if (!exists) {
-            let referredByUserId = null;
-            if (ref?.trim()) {
-              const referrerProfile = await ProviderProfile.findOne({ referralCode: ref.trim() });
-              if (referrerProfile) {
-                referredByUserId = referrerProfile.userId;
-                await awardReferralCredit(referrerProfile._id);
-              }
-            }
-            await ProviderProfile.create({ userId: user._id, referredBy: referredByUserId });
-          }
-        } else if (role === 'seeker') {
-          const exists = await SeekerProfile.findOne({ userId: user._id });
-          if (!exists) await SeekerProfile.create({ userId: user._id });
-        }
-        user.role = 'both';
-        await user.save();
-        sendWelcomeEmail(user.email, user.name, role).catch(() => {});
-
-        notifyAdmins(
-          role === 'provider' ? 'new_provider' : 'new_seeker',
-          `Nuevo ${role === 'provider' ? 'prestador' : 'buscador'}: ${user.name}`,
-          `${user.name} agregó el rol de ${role === 'provider' ? 'prestador' : 'buscador'} con Facebook.`,
-          role === 'provider' ? '/admin?tab=providers' : '/admin?tab=seekers',
-          { userId: user._id }
-        ).catch(err => console.error('notifyAdmins error:', err));
-      }
-    }
-
-    // 4. Generar JWT y redirigir al frontend (mismo endpoint de éxito que Google)
-    const token = generateToken(user._id);
-    res.redirect(
-      `${process.env.FRONTEND_URL}/auth/google-success?token=${token}&role=${user.role}`
-    );
+    return {
+      autoApprove:
+        result.overallValid === true &&
+        (result.confidence === 'high' || result.confidence === 'medium'),
+      aiResult: result,
+      reason: result.overallValid
+        ? 'Verificación automática aprobada por IA.'
+        : `Verificación automática: ${result.summary || 'No cumple los requisitos'}. Problemas: ${(result.issues || []).join(', ') || 'ninguno especificado'}.`,
+    };
   } catch (err) {
-    console.error('facebookCallback error:', err);
-    res.redirect(`${process.env.FRONTEND_URL}/login?error=facebook_error`);
+    console.error('AI verification error:', err);
+    return {
+      autoApprove: false,
+      reason: 'Error en verificación automática. Se requiere revisión manual.',
+    };
   }
 };
 
-// ════════════════════════════════════════════════════════════
-//  PLAN UPGRADE (Plus / Premium)
-// ════════════════════════════════════════════════════════════
-
-// PATCH /api/auth/upgrade-plan
-// Body: { plan: 'plus' | 'premium', months: 1 }
-// En producción esto lo dispara el webhook de MercadoPago.
-// También sirve para que el admin actualice el plan manualmente.
-const upgradePlan = async (req, res) => {
+// ── POST /api/verification/dni-front ─────────────────────
+const uploadDniFront = async (req, res) => {
   try {
-    const { plan, months = 1 } = req.body;
+    if (!req.file) return res.status(400).json({ message: 'No se recibió ningún archivo' });
+    const verification = await getOrCreate(req.user._id);
+    const publicId = `dni_front_${req.user._id}_${Date.now()}`;
+    const result = await uploadBufferToCloudinary(req.file.buffer, 'zonaservicios/verification/dni-front', publicId);
+    verification.dniFront = result.secure_url;
+    if (verification.status === 'rejected') { verification.status = 'incomplete'; verification.rejectionReason = ''; }
+    await verification.save();
+    res.json({ message: 'DNI frente subido', dniFront: verification.dniFront });
+  } catch (error) {
+    console.error('uploadDniFront error:', error);
+    res.status(500).json({ message: 'Error interno del servidor' });
+  }
+};
 
-    if (!['plus', 'premium'].includes(plan)) {
-      return res.status(400).json({ message: 'Plan inválido. Opciones: plus, premium' });
+// ── POST /api/verification/dni-back ──────────────────────
+const uploadDniBack = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: 'No se recibió ningún archivo' });
+    const verification = await getOrCreate(req.user._id);
+    const publicId = `dni_back_${req.user._id}_${Date.now()}`;
+    const result = await uploadBufferToCloudinary(req.file.buffer, 'zonaservicios/verification/dni-back', publicId);
+    verification.dniBack = result.secure_url;
+    if (verification.status === 'rejected') { verification.status = 'incomplete'; verification.rejectionReason = ''; }
+    await verification.save();
+    res.json({ message: 'DNI dorso subido', dniBack: verification.dniBack });
+  } catch (error) {
+    console.error('uploadDniBack error:', error);
+    res.status(500).json({ message: 'Error interno del servidor' });
+  }
+};
+
+// ── POST /api/verification/selfie ────────────────────────
+const uploadSelfie = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: 'No se recibió ningún archivo' });
+    const verification = await getOrCreate(req.user._id);
+    const publicId = `selfie_${req.user._id}_${Date.now()}`;
+    const result = await uploadBufferToCloudinary(req.file.buffer, 'zonaservicios/verification/selfie', publicId);
+    verification.selfie = result.secure_url;
+    if (verification.status === 'rejected') { verification.status = 'incomplete'; verification.rejectionReason = ''; }
+    await verification.save();
+    res.json({ message: 'Selfie subida', selfie: verification.selfie });
+  } catch (error) {
+    console.error('uploadSelfie error:', error);
+    res.status(500).json({ message: 'Error interno del servidor' });
+  }
+};
+
+// ── POST /api/verification/submit ────────────────────────
+const submitVerification = async (req, res) => {
+  try {
+    const verification = await getOrCreate(req.user._id);
+
+    if (!verification.dniFront || !verification.dniBack || !verification.selfie) {
+      return res.status(400).json({
+        message: 'Debés subir DNI frente, DNI dorso y selfie antes de enviar',
+        missing: { dniFront: !verification.dniFront, dniBack: !verification.dniBack, selfie: !verification.selfie },
+      });
     }
-    const numMonths = Number(months);
-    if (!Number.isInteger(numMonths) || numMonths < 1 || numMonths > 12) {
-      return res.status(400).json({ message: 'Meses inválidos (1-12)' });
+
+    if (verification.status === 'pending')  return res.status(400).json({ message: 'Tu solicitud ya está en revisión' });
+    if (verification.status === 'approved') return res.status(400).json({ message: 'Tu identidad ya fue verificada' });
+
+    const aiAnalysis = await analyzeWithAI(verification);
+
+    verification.submittedAt    = new Date();
+    verification.attempts      += 1;
+    verification.reviewedAt     = null;
+    verification.reviewedBy     = null;
+    verification.rejectionReason = '';
+    verification.aiAnalysis     = aiAnalysis.aiResult || null;
+
+    if (aiAnalysis.autoApprove) {
+      verification.status       = 'approved';
+      verification.reviewedAt   = new Date();
+      verification.reviewedBy   = null;
+      verification.aiAutoApproved = true;
+      await verification.save();
+
+      const updatedUser = await User.findByIdAndUpdate(
+        req.user._id,
+        { $set: { verified: true } },
+        { new: true, strict: false }
+      );
+      await ProviderProfile.findOneAndUpdate(
+        { userId: req.user._id },
+        { $set: { verified: true } },
+        { upsert: false }
+      );
+
+      if (updatedUser?.email) {
+        sendVerifiedProviderEmail(updatedUser.email, updatedUser.name)
+          .catch(err => console.error('Error enviando email verificado:', err));
+      }
+
+      Notification.create({
+        userId: req.user._id,
+        type: 'verification_approved',
+        title: '✅ Identidad verificada',
+        body: 'Tu identidad fue verificada automáticamente. Ya tenés el badge de verificado en tu perfil.',
+        meta: { autoApproved: true },
+      }).catch(err => console.error('Notification create error:', err));
+
+      return res.json({
+        message: '✅ ¡Tu identidad fue verificada automáticamente! Ya tenés el badge verificado.',
+        status: 'approved',
+        autoApproved: true,
+        aiSummary: aiAnalysis.aiResult?.summary || 'Verificación exitosa',
+      });
     }
 
-    const profile = await ProviderProfile.findOne({ userId: req.user._id });
-    if (!profile) return res.status(404).json({ message: 'Perfil de prestador no encontrado' });
+    verification.status         = 'pending';
+    verification.aiAutoApproved = false;
+    verification.aiReason       = aiAnalysis.reason;
+    await verification.save();
 
-    // Si ya tiene un plan activo, extender desde la fecha de expiración actual
-    const now     = new Date();
-    const baseDate = (profile.planExpiresAt && profile.planExpiresAt > now)
-      ? profile.planExpiresAt
-      : now;
+    notifyAdmins(
+      'verification_pending',
+      `Verificación pendiente: ${req.user.name}`,
+      'Envió sus documentos de identidad y necesita revisión manual.',
+      '/admin?tab=verifications',
+      { userId: req.user._id }
+    ).catch(err => console.error('notifyAdmins error:', err));
 
-    const planExpiresAt = new Date(baseDate);
-    planExpiresAt.setMonth(planExpiresAt.getMonth() + numMonths);
+    return res.json({
+      message: 'Solicitud enviada. La verificación automática no pudo confirmar tu identidad, así que un admin la revisará en 24-48 horas.',
+      status: 'pending',
+      autoApproved: false,
+      aiReason: aiAnalysis.reason,
+    });
+  } catch (error) {
+    console.error('submitVerification error:', error);
+    res.status(500).json({ message: 'Error interno del servidor' });
+  }
+};
 
-    profile.plan          = plan;
-    profile.planExpiresAt = planExpiresAt;
-    await profile.save(); // pre-save sincroniza badges automáticamente
+// ── GET /api/verification/me ──────────────────────────────
+const getMyVerification = async (req, res) => {
+  try {
+    const verification = await getOrCreate(req.user._id);
+    res.json({ verification });
+  } catch (error) {
+    console.error('getMyVerification error:', error);
+    res.status(500).json({ message: 'Error interno del servidor' });
+  }
+};
 
-    // Email de upgrade
-    const user = await User.findById(req.user._id).select('email name');
-    if (user?.email) {
-      sendPlanUpgradeEmail?.(user.email, user.name, plan, planExpiresAt)
-        .catch(err => console.error('sendPlanUpgradeEmail error:', err));
+// ── ADMIN: GET /api/verification/admin/list ───────────────
+const listVerifications = async (req, res) => {
+  try {
+    const { status = 'pending', page = 1, limit = 20 } = req.query;
+    const skip   = (parseInt(page) - 1) * parseInt(limit);
+    const filter = status === 'all' ? {} : { status };
+    filter.userId = { $exists: true, $ne: null };
+
+    const allVerifs = await Verification.find(filter)
+      .populate('userId', 'name email createdAt')
+      .sort({ submittedAt: -1 })
+      .skip(skip)
+      .limit(Number(limit));
+
+    const verifications = allVerifs.filter(v => v.userId && v.userId.name);
+
+    const totalAgg = await Verification.aggregate([
+      { $match: filter },
+      { $lookup: { from: 'users', localField: 'userId', foreignField: '_id', as: 'user' } },
+      { $match: { 'user.0': { $exists: true }, 'user.0.name': { $exists: true, $ne: null } } },
+      { $count: 'total' },
+    ]);
+
+    const total = totalAgg[0]?.total ?? 0;
+
+    res.json({
+      verifications,
+      total,
+      page: Number(page),
+      pages: Math.ceil(total / Number(limit)),
+      pagination: { total, page: Number(page), pages: Math.ceil(total / Number(limit)) },
+    });
+  } catch (error) {
+    console.error('listVerifications error:', error);
+    res.status(500).json({ message: 'Error interno del servidor' });
+  }
+};
+
+// ── ADMIN: PATCH approve ──────────────────────────────────
+const approveVerification = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const verification = await Verification.findOne({ userId });
+    if (!verification) return res.status(404).json({ message: 'Solicitud no encontrada' });
+    if (verification.status !== 'pending') return res.status(400).json({ message: 'La solicitud no está en estado pendiente' });
+
+    verification.status          = 'approved';
+    verification.reviewedAt      = new Date();
+    verification.reviewedBy      = req.user._id;
+    verification.rejectionReason = '';
+    await verification.save();
+
+    const updatedUser = await User.findByIdAndUpdate(userId, { $set: { verified: true } }, { new: true, strict: false });
+    await ProviderProfile.findOneAndUpdate({ userId }, { $set: { verified: true } }, { upsert: false });
+
+    if (updatedUser?.email) {
+      sendVerifiedProviderEmail(updatedUser.email, updatedUser.name)
+        .catch(err => console.error('Error enviando email verificado:', err));
     }
 
     Notification.create({
-      userId: req.user._id,
-      type: 'plan_upgraded',
-      title: `🎉 Plan actualizado a ${plan.toUpperCase()}`,
-      body: `Tu plan ${plan.toUpperCase()} está activo hasta el ${planExpiresAt.toLocaleDateString('es-AR')}.`,
-      meta: { plan, planExpiresAt },
+      userId,
+      type: 'verification_approved',
+      title: '✅ Identidad verificada',
+      body: 'Un administrador aprobó tu verificación de identidad. Ya tenés el badge de verificado.',
+      meta: { reviewedBy: req.user._id },
     }).catch(err => console.error('Notification create error:', err));
 
-    res.json({
-      message:      `Plan actualizado a ${plan.toUpperCase()}`,
-      plan:         profile.plan,
-      planExpiresAt: profile.planExpiresAt,
-      badges:       profile.badges,
-    });
-  } catch (err) {
-    console.error('upgradePlan error:', err);
+    res.json({ message: 'Verificación aprobada', verification });
+  } catch (error) {
+    console.error('approveVerification error:', error);
     res.status(500).json({ message: 'Error interno del servidor' });
   }
 };
 
-// ADMIN: PATCH /api/auth/admin/upgrade-plan/:userId
-// Admin puede actualizar el plan de cualquier prestador
-const adminUpgradePlan = async (req, res) => {
+// ── ADMIN: PATCH reject ───────────────────────────────────
+const rejectVerification = async (req, res) => {
   try {
-    const { userId }         = req.params;
-    const { plan, months = 1 } = req.body;
+    const { userId } = req.params;
+    const { reason = '' } = req.body;
+    const verification = await Verification.findOne({ userId });
+    if (!verification) return res.status(404).json({ message: 'Solicitud no encontrada' });
+    if (verification.status !== 'pending') return res.status(400).json({ message: 'La solicitud no está en estado pendiente' });
 
-    if (!['free', 'plus', 'premium'].includes(plan)) {
-      return res.status(400).json({ message: 'Plan inválido. Opciones: free, plus, premium' });
-    }
-    const numMonths = Number(months);
-    if (plan !== 'free' && (!Number.isInteger(numMonths) || numMonths < 1 || numMonths > 12)) {
-      return res.status(400).json({ message: 'Meses inválidos (1-12)' });
-    }
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return res.status(400).json({ message: 'userId inválido' });
-    }
+    verification.status          = 'rejected';
+    verification.reviewedAt      = new Date();
+    verification.reviewedBy      = req.user._id;
+    verification.rejectionReason = reason;
+    await verification.save();
 
-    const profile = await ProviderProfile.findOne({ userId });
-    if (!profile) return res.status(404).json({ message: 'Perfil no encontrado' });
+    await User.findByIdAndUpdate(userId, { $set: { verified: false } }, { strict: false });
+    await ProviderProfile.findOneAndUpdate({ userId }, { $set: { verified: false } });
 
-    if (plan === 'free') {
-      profile.plan          = 'free';
-      profile.planExpiresAt = null;
-    } else {
-      const now      = new Date();
-      const baseDate = (profile.planExpiresAt && profile.planExpiresAt > now)
-        ? profile.planExpiresAt
-        : now;
+    Notification.create({
+      userId,
+      type: 'verification_rejected',
+      title: '❌ Verificación rechazada',
+      body: reason ? `Tu verificación fue rechazada. Motivo: ${reason}` : 'Tu verificación fue rechazada. Podés reintentar subiendo los documentos nuevamente.',
+      meta: { reviewedBy: req.user._id, reason },
+    }).catch(err => console.error('Notification create error:', err));
 
-      const planExpiresAt = new Date(baseDate);
-      planExpiresAt.setMonth(planExpiresAt.getMonth() + numMonths);
-
-      profile.plan          = plan;
-      profile.planExpiresAt = planExpiresAt;
-    }
-
-    await profile.save();
-
-    const user = await User.findById(userId).select('email name');
-    if (user?.email && plan !== 'free') {
-      sendPlanUpgradeEmail?.(user.email, user.name, plan, profile.planExpiresAt)
-        .catch(() => {});
-    }
-
-    if (plan !== 'free') {
-      Notification.create({
-        userId,
-        type: 'plan_upgraded',
-        title: `🎉 Plan actualizado a ${plan.toUpperCase()}`,
-        body: `Un administrador actualizó tu plan a ${plan.toUpperCase()}.`,
-        meta: { plan, planExpiresAt: profile.planExpiresAt },
-      }).catch(err => console.error('Notification create error:', err));
-    }
-
-    res.json({
-      message:      `Plan de ${user?.name || userId} actualizado a ${plan.toUpperCase()}`,
-      plan:         profile.plan,
-      planExpiresAt: profile.planExpiresAt,
-      badges:       profile.badges,
-    });
-  } catch (err) {
-    console.error('adminUpgradePlan error:', err);
+    res.json({ message: 'Verificación rechazada', verification });
+  } catch (error) {
+    console.error('rejectVerification error:', error);
     res.status(500).json({ message: 'Error interno del servidor' });
   }
 };
 
-// ════════════════════════════════════════════════════════════
-//  EMAIL
-// ════════════════════════════════════════════════════════════
-
-const getMe = async (req, res) => {
+// ── ADMIN: GET /api/verification/admin/:userId ────────────
+const getVerificationDetail = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password -emailVerificationToken');
-    if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
-    const userData = await buildUserResponse(user);
-    res.json({ user: { ...user.toObject(), ...userData } });
-  } catch (err) {
-    console.error('getMe error:', err);
+    const { userId } = req.params;
+    const verification = await Verification.findOne({ userId })
+      .populate('userId', 'name email createdAt')
+      .populate('reviewedBy', 'name');
+    if (!verification) return res.status(404).json({ message: 'Solicitud no encontrada' });
+    res.json({ verification });
+  } catch (error) {
+    console.error('getVerificationDetail error:', error);
     res.status(500).json({ message: 'Error interno del servidor' });
   }
 };
 
-const verifyEmail = async (req, res) => {
+// ── ADMIN: DELETE /api/verification/admin/:id ─────────────
+const deleteVerification = async (req, res) => {
   try {
-    const { token } = req.body;
-    if (!token) return res.status(400).json({ message: 'Token requerido' });
-
-    const user = await User.findOne({ emailVerificationToken: token });
-    if (!user) return res.status(400).json({ message: 'Token inválido o expirado' });
-
-    user.emailVerified         = true;
-    user.emailVerificationToken = null;
-    const roleForEmail = user.pendingRoleVerification || user.role;
-    user.pendingRoleVerification = null;
-    await user.save();
-
-    sendWelcomeEmail(user.email, user.name, roleForEmail).catch(err => console.error('sendWelcomeEmail error:', err));
-    res.json({ message: 'Email verificado correctamente' });
-  } catch (err) {
-    console.error('verifyEmail error:', err);
+    const { id } = req.params;
+    const verif = await Verification.findByIdAndDelete(id);
+    if (!verif) return res.status(404).json({ message: 'Verificación no encontrada' });
+    res.json({ message: 'Verificación eliminada', id });
+  } catch (error) {
+    console.error('deleteVerification error:', error);
     res.status(500).json({ message: 'Error interno del servidor' });
-  }
-};
-
-const resendVerification = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    if (user.emailVerified) return res.status(400).json({ message: 'El email ya está verificado' });
-
-    const emailToken          = generateEmailToken();
-    user.emailVerificationToken = emailToken;
-    await user.save();
-
-    sendVerificationEmail(user.email, user.name, emailToken).catch(err => console.error('resend error:', err));
-    res.json({ message: 'Email de verificación reenviado' });
-  } catch (err) {
-    console.error('resendVerification error:', err);
-    res.status(500).json({ message: 'Error interno del servidor' });
-  }
-};
-
-const forgotPassword = async (req, res) => {
-  try {
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ message: 'Email requerido' });
-
-    const user = await User.findOne({ email });
-    if (!user) return res.json({ message: 'Si el email existe, recibirás un enlace para restablecer tu contraseña.' });
-
-    const resetToken            = generateEmailToken();
-    user.passwordResetToken     = resetToken;
-    user.passwordResetExpires   = Date.now() + 60 * 60 * 1000;
-    await user.save();
-
-    sendPasswordResetEmail(user.email, user.name, resetToken).catch(err => console.error('sendPasswordReset error:', err));
-    res.json({ message: 'Si el email existe, recibirás un enlace para restablecer tu contraseña.' });
-  } catch (err) {
-    console.error('forgotPassword error:', err);
-    res.status(500).json({ message: 'Error interno del servidor' });
-  }
-};
-
-const resetPassword = async (req, res) => {
-  try {
-    const { token, password } = req.body;
-    if (!token || !password) return res.status(400).json({ message: 'Token y contraseña son requeridos' });
-    if (password.length < 8)  return res.status(400).json({ message: 'La contraseña debe tener al menos 8 caracteres' });
-
-    const user = await User.findOne({
-      passwordResetToken:   token,
-      passwordResetExpires: { $gt: Date.now() },
-    });
-    if (!user) return res.status(400).json({ message: 'Token inválido o expirado' });
-
-    user.password           = password;
-    user.passwordResetToken = null;
-    user.passwordResetExpires = null;
-    await user.save();
-
-    res.json({ message: 'Contraseña restablecida correctamente. Ya podés iniciar sesión.' });
-  } catch (err) {
-    console.error('resetPassword error:', err);
-    res.status(500).json({ message: 'Error interno del servidor' });
-  }
-};
-
-const changePassword = async (req, res) => {
-  try {
-    const { currentPassword, newPassword } = req.body;
-    if (!currentPassword || !newPassword)
-      return res.status(400).json({ message: 'Contraseña actual y nueva son requeridas' });
-    if (newPassword.length < 8)
-      return res.status(400).json({ message: 'La nueva contraseña debe tener al menos 8 caracteres' });
-    if (currentPassword === newPassword)
-      return res.status(400).json({ message: 'La nueva contraseña debe ser diferente a la actual' });
-
-    const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
-
-    const isMatch = await user.matchPassword(currentPassword);
-    if (!isMatch) return res.status(401).json({ message: 'La contraseña actual es incorrecta' });
-
-    user.password = newPassword;
-    await user.save();
-    res.json({ message: 'Contraseña actualizada correctamente' });
-  } catch (err) {
-    console.error('changePassword error:', err);
-    res.status(500).json({ message: 'Error interno del servidor' });
-  }
-};
-
-// PATCH /api/auth/active-role
-const setActiveRole = async (req, res) => {
-  try {
-    const { activeRole } = req.body;
-    if (!['provider', 'seeker'].includes(activeRole)) {
-      return res.status(400).json({ message: 'Rol inválido' });
-    }
-    const user = await User.findById(req.user.id);
-    if (!user || user.role !== 'both') {
-      return res.status(400).json({ message: 'Solo usuarios con ambos roles pueden hacer esto' });
-    }
-    user.activeRole = activeRole;
-    await user.save();
-    const userData = await buildUserResponse(user);
-    res.json({ user: userData });
-  } catch (err) {
-    console.error('setActiveRole error:', err);
-    res.status(500).json({ message: 'Error interno' });
   }
 };
 
 module.exports = {
-  // Admin
-  adminCheck,
-  adminSetup,
-  registerAdmin,
-  // Registro
-  registerSeeker,
-  registerProvider,
-  // Auth
-  login,
-  getMe,
-  verifyEmail,
-  resendVerification,
-  forgotPassword,
-  resetPassword,
-  changePassword,
-  // Google OAuth
-  googleAuth,
-  googleCallback,
-  // Facebook OAuth
-  facebookAuth,
-  facebookCallback,
-  // Plan
-  adminUpgradePlan,
-  setActiveRole,
+  uploadDniFront,
+  uploadDniBack,
+  uploadSelfie,
+  submitVerification,
+  getMyVerification,
+  listVerifications,
+  approveVerification,
+  rejectVerification,
+  getVerificationDetail,
+  deleteVerification,
 };
