@@ -160,7 +160,15 @@ const adminSetup = async (req, res) => {
     const existing = await User.findOne({ email });
     if (existing) return res.status(400).json({ message: 'Ya existe una cuenta con ese email' });
 
-    const user  = await User.create({ name, email, password, role: 'admin', emailVerified: true });
+    let user;
+    try {
+      user = await User.create({ name, email, password, role: 'admin', emailVerified: true });
+    } catch (err) {
+      if (err.code === 11000) {
+        return res.status(403).json({ message: 'Ya existe un administrador. Usá el código de invitación.' });
+      }
+      throw err;
+    }
     const token = generateToken(user._id);
 
     res.status(201).json({

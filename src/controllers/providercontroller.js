@@ -97,12 +97,15 @@ const getPublicProfile = async (req, res) => {
       'name emailVerified'
     );
 
-    if (!profile) {
-      return res.status(404).json({ message: 'Perfil no encontrado' });
-    }
+    if (!profile || !profile.userId) {
+  return res.status(404).json({ message: 'Perfil no encontrado' });
+}
 
-    const viewerId = req.user?._id?.toString();
-    const ownerId  = profile.userId._id.toString();
+const viewerId = req.user?._id?.toString();
+const ownerId  = profile.userId._id.toString();
+if (!profile.userId) {
+  return res.status(404).json({ message: 'Perfil no encontrado' });
+}
 
     if (viewerId !== ownerId) {
       await registerView(profile);
@@ -278,18 +281,28 @@ const getPublicStats = async (req, res) => {
 
 // ── helpers ────────────────────────────────────────────────
 const registerView = async (profile) => {
+  let newCount, newDate;
+
   if (profile.plan === 'plus') {
-    profile.viewsTracking.count = (profile.viewsTracking.count || 0) + 1;
-    profile.viewsTracking.date  = new Date();
+    newCount = (profile.viewsTracking?.count || 0) + 1;
+    newDate  = new Date();
   } else {
     const today = isToday(profile.viewsTracking?.date);
     if (!today) {
-      profile.viewsTracking = { date: new Date(), count: 1 };
-    } else if (profile.viewsTracking.count < DAILY_VIEW_LIMIT) {
-      profile.viewsTracking.count += 1;
+      newCount = 1;
+      newDate  = new Date();
+    } else if ((profile.viewsTracking?.count || 0) < DAILY_VIEW_LIMIT) {
+      newCount = profile.viewsTracking.count + 1;
+      newDate  = profile.viewsTracking.date;
+    } else {
+      return; // límite alcanzado, no hacer nada
     }
   }
-  await profile.save();
+
+  await ProviderProfile.updateOne(
+    { _id: profile._id },
+    { $set: { 'viewsTracking.count': newCount, 'viewsTracking.date': newDate } }
+  );
 };
 
 const isToday = (date) => {
