@@ -28,19 +28,17 @@ router.get('/stats/public', getPublicStats);
 router.get('/me/profile',         protect, authorizeRoles('provider'), getMyProfile);
 router.patch('/me/profile',       protect, authorizeRoles('provider'), requireEmailVerified, updateMyProfile);
 router.get('/me/stats',           protect, authorizeRoles('provider'), getMyStats);
-router.use(protect, authorizeRoles('seeker'));
+router.get('/me/nearby-seekers',  protect, authorizeRoles('provider'), getNearbySeekersForMe);
 
 // ── Toggle activo/inactivo ────────────────────────────────
 router.patch('/me/active-status', protect, authorizeRoles('provider'), toggleActiveStatus);
 
 // ── Rutas con :id — van DESPUÉS de /me ──
-router.get('/:id',                optionalAuth, getPublicProfile);
+router.get('/:id', optionalAuth, getPublicProfile);
 router.post('/:id/view',          trackView);
 router.get('/:id/reviews',        getProviderReviews);
 router.get('/:id/nearby-seekers', getNearbyActivity);
 // ── Buscar perfil por userId (para mensajes) ──
 router.get('/by-user/:userId', optionalAuth, getProfileByUserId);
 
-// ── Rutas con :id — van DESPUÉS de /me ──
-router.get('/:id',                optionalAuth, getPublicProfile);
 module.exports = router;

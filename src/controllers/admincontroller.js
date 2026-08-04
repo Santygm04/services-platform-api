@@ -266,7 +266,13 @@ const getUsers = async (req, res) => {
     const usersWithProfile = await Promise.all(users.map(async u => {
   const obj = u.toObject();
   obj.registrationMethod = obj.googleId ? 'google' : obj.facebookId ? 'facebook' : 'email';
-  if (u.role === 'provider') {
+
+  if (u.role === 'seeker' || u.role === 'both') {
+    const seekerProfile = await SeekerProfile.findOne({ userId: u._id }).select('profilePhoto');
+    obj.seekerPhoto = seekerProfile?.profilePhoto || null;
+  }
+
+  if (u.role === 'provider' || u.role === 'both') {
     const profile = await ProviderProfile.findOne({ userId: u._id })
       .select('profession zone plan verified profilePhoto ratingAverage reviewsCount urgencyAvailable activeStatus lastActiveAt createdAt _id');
     
