@@ -3,6 +3,8 @@ const Message = require('../models/message');
 const { ConversationMeta } = require('../models/message');
 const User = require('../models/User');
 const Notification = require('../models/notification');
+const ProviderProfile = require('../models/ProviderProfile');
+const SeekerProfile = require('../models/SeekerProfile');
 
 // ── Sanitización de texto libre ────────────────────────────
 const sanitizeText = (value, maxLength) => {
@@ -19,6 +21,22 @@ const getMeta = async (conversationId, userId) => {
     meta = await ConversationMeta.create({ conversationId, userId });
   }
   return meta;
+};
+
+// ── Helper: mapa userId → profilePhoto (batch, según rol) ─────
+const getPhotosMap = async (users) => {
+  const providerIds = users.filter(u => u.role === 'provider' || u.role === 'both').map(u => u._id);
+  const seekerIds   = users.filter(u => u.role === 'seeker'   || u.role === 'both').map(u => u._id);
+
+  const [providerProfiles, seekerProfiles] = await Promise.all([
+    providerIds.length ? ProviderProfile.find({ userId: { $in: providerIds } }).select('userId profilePhoto').lean() : [],
+    seekerIds.length   ? SeekerProfile.find({ userId: { $in: seekerIds } }).select('userId profilePhoto').lean()     : [],
+  ]);
+
+  const map = {};
+  providerProfiles.forEach(p => { if (p.profilePhoto) map[p.userId.toString()] = p.profilePhoto; });
+  seekerProfiles.forEach(p => { if (!map[p.userId.toString()] && p.profilePhoto) map[p.userId.toString()] = p.profilePhoto; });
+  return map;
 };
 
 // ── POST /api/messages — Enviar mensaje ───────────────────────
@@ -58,7 +76,15 @@ const sendMessage = async (req, res) => {
 
     const populated = await Message.findById(message._id)
       .populate('sender', 'name role')
-      .populate('receiver', 'name role');
+      .populate('receiver', 'name role')
+      .lean();
+
+    const sendPhotosMap = await getPhotosMap([
+      { _id: populated.sender._id,   role: populated.sender.role },
+      { _id: populated.receiver._id, role: populated.receiver.role },
+    ]);
+    populated.sender.profilePhoto   = sendPhotosMap[populated.sender._id.toString()]   || null;
+    populated.receiver.profilePhoto = sendPhotosMap[populated.receiver._id.toString()] || null;
 
     // 🚀 RESPUESTA INMEDIATA (esto hace que no tarde)
     res.status(201).json({ message: populated });
@@ -154,10 +180,15 @@ const getConversations = async (req, res) => {
             : conv.lastMessage.sender;
 
         const otherUser = await User.findById(otherUserId).select('name role').lean();
+        let otherUserPhoto = null;
+        if (otherUser) {
+          const convPhotosMap = await getPhotosMap([{ _id: otherUser._id, role: otherUser.role }]);
+          otherUserPhoto = convPhotosMap[otherUser._id.toString()] || null;
+        }
 
         return {
           conversationId: conv._id,
-          otherUser: otherUser ? { ...otherUser, _id: otherUser._id } : { name: 'Usuario eliminado', role: 'unknown' },
+          otherUser: otherUser ? { ...otherUser, _id: otherUser._id, profilePhoto: otherUserPhoto } : { name: 'Usuario eliminado', role: 'unknown' },
           lastMessage: {
             content: conv.lastMessage.content,
             createdAt: conv.lastMessage.createdAt,
@@ -214,6 +245,18 @@ const getMessages = async (req, res) => {
       .populate('sender', 'name role')
       .populate('receiver', 'name role')
       .lean();
+
+    // Adjuntar foto de perfil a sender/receiver de cada mensaje
+    const usersForPhotos = [];
+    messages.forEach(m => {
+      if (m.sender)   usersForPhotos.push({ _id: m.sender._id,   role: m.sender.role });
+      if (m.receiver) usersForPhotos.push({ _id: m.receiver._id, role: m.receiver.role });
+    });
+    const msgPhotosMap = await getPhotosMap(usersForPhotos);
+    messages.forEach(m => {
+      if (m.sender)   m.sender.profilePhoto   = msgPhotosMap[m.sender._id.toString()]   || null;
+      if (m.receiver) m.receiver.profilePhoto = msgPhotosMap[m.receiver._id.toString()] || null;
+    });
 
     // Marcar como leídos
     await Message.updateMany(
