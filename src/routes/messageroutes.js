@@ -16,7 +16,7 @@ const sendMessageLimiter = rateLimit({
 const {
   sendMessage, getConversations, getMessages, getUnreadCount,
   markAsRead, archiveConversation, unarchiveConversation,
-  deleteConversation, pinConversation, markUnread,
+  deleteConversation, pinConversation, markUnread, getUserPhoto,
 } = require('../controllers/messagecontroller');
 
 router.use(protect);
@@ -25,6 +25,7 @@ router.use(authorizeSection('messages'));
 // Rutas fijas ANTES de :conversationId
 router.get('/conversations',  getConversations);
 router.get('/unread-count',   getUnreadCount);
+router.get('/user-photo/:userId', getUserPhoto);
 router.post('/',              sendMessageLimiter, sendMessageValidator, sendMessage);
 
 // Rutas con :conversationId

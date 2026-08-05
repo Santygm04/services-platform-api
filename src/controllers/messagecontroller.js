@@ -39,6 +39,23 @@ const getPhotosMap = async (users) => {
   return map;
 };
 
+const getUserPhoto = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: 'userId inválido' });
+    }
+    const targetUser = await User.findById(userId).select('role').lean();
+    if (!targetUser) return res.status(404).json({ message: 'Usuario no encontrado' });
+
+    const photosMap = await getPhotosMap([{ _id: targetUser._id, role: targetUser.role }]);
+    res.json({ profilePhoto: photosMap[targetUser._id.toString()] || null });
+  } catch (err) {
+    console.error('getUserPhoto error:', err);
+    res.status(500).json({ message: 'Error al obtener foto' });
+  }
+};
+
 // ── POST /api/messages — Enviar mensaje ───────────────────────
 const sendMessage = async (req, res) => {
   try {
@@ -480,4 +497,5 @@ module.exports = {
   deleteConversation,
   pinConversation,
   markUnread,
+  getUserPhoto,
 };
