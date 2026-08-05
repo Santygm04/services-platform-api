@@ -121,8 +121,8 @@ const buildUserResponse = async (user) => {
     role:          user.role,
     activeRole:    user.activeRole || null,
     emailVerified: user.emailVerified,
-    googleId:      user.googleId || null,
-    facebookId:    user.facebookId || null,
+    hasGoogle:     !!user.googleId,
+    hasFacebook:   !!user.facebookId,
     status:        user.status,
     profilePhoto,
     plan:          plan || null,
@@ -147,6 +147,11 @@ const adminCheck = async (req, res) => {
 // POST /api/auth/admin-setup — primer admin (solo si no hay ninguno)
 const adminSetup = async (req, res) => {
   try {
+    const origin = req.headers.origin || req.headers.referer || '';
+    const allowed = [process.env.FRONTEND_URL, 'http://localhost:5173'].filter(Boolean);
+    if (!allowed.some(o => origin.startsWith(o))) {
+      return res.status(403).json({ message: 'No autorizado.' });
+    }
     const { name, email, password } = req.body;
     if (!name || !email || !password)
       return res.status(400).json({ message: 'Todos los campos son obligatorios' });
@@ -194,8 +199,10 @@ const registerAdmin = async (req, res) => {
     const validCode = process.env.ADMIN_INVITE_CODE;
     if (!validCode)
       return res.status(503).json({ message: 'El registro de administradores no está habilitado.' });
-    if (inviteCode.trim() !== validCode.trim())
+    if (inviteCode.trim() !== validCode.trim()) {
+      console.warn(`[SECURITY] Código admin inválido desde IP ${req.ip} — intento: ${inviteCode}`);
       return res.status(403).json({ message: 'Código de invitación inválido' });
+    }
 
     const existing = await User.findOne({ email });
     if (existing) return res.status(400).json({ message: 'Ya existe una cuenta con ese email' });
@@ -421,6 +428,7 @@ const login = async (req, res) => {
 
     const isMatch = await user.matchPassword(password);
     if (!isMatch) {
+      console.warn(`[SECURITY] Login fallido para ${email} desde IP ${req.ip}`);
     if (user.googleId) {
       return res.status(401).json({ message: 'Esta cuenta fue creada con Google. Usá "Continuar con Google" para ingresar.' });
       }

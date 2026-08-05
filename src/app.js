@@ -242,7 +242,7 @@ ${profiles.map(p => `  <url>
   }
 });
 
-app.get('/api/health', (req, res) => res.json({ status: 'ok', env: process.env.NODE_ENV || 'development' }));
+app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
 app.use((req, res) => {
   res.status(404).json({ message: `Ruta no encontrada: ${req.method} ${req.originalUrl}` });

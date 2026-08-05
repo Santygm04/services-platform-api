@@ -269,6 +269,11 @@ const markAsRead = async (req, res) => {
     const userId = req.user._id;
     const { conversationId } = req.params;
 
+    if (!conversationId.split('_').includes(userId.toString())) {
+      console.warn(`[SECURITY] Usuario ${userId} intentó marcar como leída conversación ajena: ${conversationId}`);
+      return res.status(403).json({ message: 'No tenés acceso a esta conversación' });
+    }
+
     const result = await Message.updateMany(
       { conversationId, receiver: userId, read: false },
       { $set: { read: true, readAt: new Date() } }
@@ -293,6 +298,10 @@ const archiveConversation = async (req, res) => {
     const userId = req.user._id;
     const { conversationId } = req.params;
 
+    if (!conversationId.split('_').includes(userId.toString())) {
+      return res.status(403).json({ message: 'No tenés acceso a esta conversación' });
+    }
+
     await ConversationMeta.findOneAndUpdate(
       { conversationId, userId },
       { $set: { archived: true } },
@@ -312,6 +321,10 @@ const unarchiveConversation = async (req, res) => {
     const userId = req.user._id;
     const { conversationId } = req.params;
 
+    if (!conversationId.split('_').includes(userId.toString())) {
+      return res.status(403).json({ message: 'No tenés acceso a esta conversación' });
+    }
+
     await ConversationMeta.findOneAndUpdate(
       { conversationId, userId },
       { $set: { archived: false } },
@@ -330,6 +343,11 @@ const deleteConversation = async (req, res) => {
   try {
     const userId = req.user._id;
     const { conversationId } = req.params;
+
+    if (!conversationId.split('_').includes(userId.toString())) {
+      console.warn(`[SECURITY] Usuario ${userId} intentó eliminar conversación ajena: ${conversationId} desde IP ${req.ip}`);
+      return res.status(403).json({ message: 'No tenés acceso a esta conversación' });
+    }
 
     // Marcar todos los mensajes como eliminados para este usuario
     await Message.updateMany(
@@ -356,6 +374,10 @@ const pinConversation = async (req, res) => {
   try {
     const userId = req.user._id;
     const { conversationId } = req.params;
+
+    if (!conversationId.split('_').includes(userId.toString())) {
+      return res.status(403).json({ message: 'No tenés acceso a esta conversación' });
+    }
 
     // Máximo 3 fijadas
     const pinnedCount = await ConversationMeta.countDocuments({ userId, pinned: true });
@@ -386,11 +408,16 @@ const markUnread = async (req, res) => {
     const userId = req.user._id;
     const { conversationId } = req.params;
 
+    if (!conversationId.split('_').includes(userId.toString())) {
+      return res.status(403).json({ message: 'No tenés acceso a esta conversación' });
+    }
+
     await ConversationMeta.findOneAndUpdate(
       { conversationId, userId },
       { $set: { markedUnread: true } },
       { upsert: true }
     );
+
 
     res.json({ message: 'Marcada como no leída' });
   } catch (err) {

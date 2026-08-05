@@ -27,6 +27,7 @@ const {
   adminUpgradePlan,
 } = require('../controllers/authcontroller');
 
+const rateLimit          = require('express-rate-limit');
 const { protect }        = require('../middlewares/authmiddleware');
 const { authorizeRoles } = require('../middlewares/rolemiddleware');
 
@@ -36,8 +37,11 @@ router.post('/register-provider', registerProvider);
 
 // ── Admin ─────────────────────────────────────────────────
 router.get('/admin-check',      adminCheck);
-router.post('/admin-setup',     adminSetup);
-router.post('/register-admin',  registerAdmin);
+router.post('/admin-setup',     adminSetup);        // OK: el controller ya verifica que no haya admin
+router.post('/register-admin',
+  rateLimit({ windowMs: 60 * 60 * 1000, max: 3, message: { message: 'Demasiados intentos.' } }),
+  registerAdmin
+);
 
 // ── Login / sesión ────────────────────────────────────────
 router.post('/login',               login);
