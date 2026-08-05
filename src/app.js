@@ -68,7 +68,7 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 20,
+  max: 5,
   message: { message: 'Demasiados intentos, esperá 15 minutos.' },
   standardHeaders: true,
   legacyHeaders: false,

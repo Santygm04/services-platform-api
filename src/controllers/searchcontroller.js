@@ -2,6 +2,57 @@ const mongoose = require('mongoose');
 const ProviderProfile = require('../models/ProviderProfile');
 const ServiceCategory = require('../models/servicecategory');
 
+// ── Distancia de Levenshtein (tolerancia a errores tipográficos) ──
+const levenshtein = (a, b) => {
+  a = a.toLowerCase(); b = b.toLowerCase();
+  const matrix = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+  for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
+  for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost
+      );
+    }
+  }
+  return matrix[a.length][b.length];
+};
+
+// Tolerancia según largo de palabra: cortas toleran menos, largas toleran más
+const maxDistanceFor = (len) => (len <= 4 ? 1 : len <= 8 ? 2 : 3);
+
+// Busca el término conocido más parecido a la palabra escrita
+const findClosestMatch = (word, knownWords) => {
+  let best = null;
+  let bestDist = Infinity;
+  for (const known of knownWords) {
+    const dist = levenshtein(word, known);
+    if (dist < bestDist) { bestDist = dist; best = known; }
+  }
+  if (best && bestDist > 0 && bestDist <= maxDistanceFor(word.length)) return best;
+  return null;
+};
+
+// ── Cache de términos conocidos (profesiones + categorías + subcategorías) ──
+let knownTermsCache = null;
+let knownTermsCacheTime = 0;
+const getKnownSearchTerms = async () => {
+  const now = Date.now();
+  if (knownTermsCache && now - knownTermsCacheTime < 10 * 60 * 1000) return knownTermsCache;
+
+  const professions = await ProviderProfile.distinct('profession', { profession: { $nin: [null, ''] } });
+  const categories  = await ServiceCategory.find({ active: true }).select('name subcategories.name').lean();
+  const catNames    = categories.map(c => c.name);
+  const subNames    = categories.flatMap(c => (c.subcategories || []).map(s => s.name));
+
+  knownTermsCache = [...new Set([...professions, ...catNames, ...subNames])];
+  knownTermsCacheTime = now;
+  return knownTermsCache;
+};
+
 // ── GET /api/search/providers ────────────────────────────
 const searchProviders = async (req, res) => {
   try {
@@ -32,11 +83,22 @@ const searchProviders = async (req, res) => {
   };
 
     if (safeKeyword) {
-      const safePattern = escapeRegex(safeKeyword);
-      filter.$or = [
-        { profession: { $regex: safePattern, $options: 'i' } },
-        { bio: { $regex: safePattern, $options: 'i' } },
-      ];
+      const knownTerms = await getKnownSearchTerms();
+      const words = safeKeyword.split(/\s+/).filter(Boolean);
+
+      const expandedTerms = new Set([safeKeyword]);
+      for (const w of words) {
+        if (w.length >= 3) {
+          const match = findClosestMatch(w, knownTerms);
+          if (match) expandedTerms.add(match);
+        }
+      }
+
+      const patterns = [...expandedTerms].map(escapeRegex);
+      filter.$or = patterns.flatMap(p => [
+        { profession: { $regex: p, $options: 'i' } },
+        { bio: { $regex: p, $options: 'i' } },
+      ]);
     }
 
     if (safeZone) {
