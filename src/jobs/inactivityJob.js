@@ -1,11 +1,11 @@
 const User = require('../models/User');
 const ProviderProfile = require('../models/ProviderProfile');
 
-const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+const NINETY_DAYS = 90 * 24 * 60 * 60 * 1000;
 
 const deactivateInactiveProviders = async () => {
   try {
-    const cutoff = new Date(Date.now() - THIRTY_DAYS);
+    const cutoff = new Date(Date.now() - NINETY_DAYS);
 
     // Buscar prestadores con lastActiveAt viejo O sin lastActiveAt
     // pero que tengan más de 30 días desde su creación (para no afectar nuevos)
