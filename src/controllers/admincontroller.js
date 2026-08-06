@@ -217,10 +217,20 @@ const getFeaturedProviders = async (req, res) => {
   try {
     const providers = await ProviderProfile.find()
       .populate('userId', 'name email status')
-      .select('profession zone plan verified urgencyAvailable ratingAverage reviewsCount profilePhoto userId activeStatus createdAt')
+      .select('profession zone plan verified urgencyAvailable ratingAverage reviewsCount profilePhoto userId activeStatus lastActiveAt createdAt')
       .sort({ createdAt: -1 })
       .limit(300);
-    res.json({ providers });
+
+    // Normalizar activeStatus: undefined/null → true (perfiles viejos sin el campo)
+    const normalized = providers.map(p => {
+      const obj = p.toObject();
+      if (obj.activeStatus === undefined || obj.activeStatus === null) {
+        obj.activeStatus = true;
+      }
+      return obj;
+    });
+
+    res.json({ providers: normalized });
   } catch (err) {
     res.status(500).json({ message: 'Error interno' });
   }
@@ -313,8 +323,18 @@ const getUserDetail = async (req, res) => {
     let seekerProfile = null;
 
     if (user.role === 'provider' || user.role === 'both') {
-      const rawProfile = await ProviderProfile.findOne({ userId: user._id }).lean();
-      console.log('DEBUG getUserDetail - userId:', user._id, '- rawProfile:', rawProfile?._id || 'NULL');
+      let rawProfile = await ProviderProfile.findOne({ userId: user._id }).lean();
+      if (!rawProfile) {
+        try {
+          const created = await ProviderProfile.create({ userId: user._id });
+          rawProfile = created.toObject();
+          rawProfile._id = String(rawProfile._id);
+        } catch (e) {
+          // Si falla la creación (ej: duplicate key), intentar buscar de nuevo
+          const retry = await ProviderProfile.findOne({ userId: user._id }).lean();
+          if (retry) rawProfile = retry;
+        }
+      }
       if (rawProfile) {
         const now = new Date();
         const lastActive = rawProfile.lastActiveAt || rawProfile.createdAt;
@@ -322,6 +342,7 @@ const getUserDetail = async (req, res) => {
         const daysSinceCreated = Math.floor((now - new Date(rawProfile.createdAt)) / (1000 * 60 * 60 * 24));
         profile = {
           ...rawProfile,
+          _id: String(rawProfile._id),
           daysSinceActive,
           daysSinceCreated,
           lastActiveLabel: rawProfile.lastActiveAt
