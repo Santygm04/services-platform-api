@@ -502,7 +502,7 @@ const getNearbySeekersForMe = async (req, res) => {
         _id:             seekerDoc?._id || u._id,
         userId:          u._id,
         name:            u.name,
-        zone:            seekerDoc?.zone || '',
+        zone:            seekerDoc?.zone || effectiveZone || '',
         profilePhoto:    seekerDoc?.profilePhoto || '',
         memberSince:     u.createdAt,
         relevanceScore:  score,
